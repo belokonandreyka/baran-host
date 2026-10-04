@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Host-side companion of the Baran iOS terminal.
+
+  baran pair [options]           QR code that adds this machine to the app
+  baran push send TITLE BODY     notify every registered phone
+  baran push notify TITLE BODY   the same, but silent while the Mac is in use
+  baran push claude-hook         notify from a Claude Code hook (reads stdin)
+  baran statusline               Claude Code status line that records plan limits
+  baran --version
+
+`baran <command> --help` shows the options of a command.
+"""
+import os
+import sys
+
+VERSION = "0.1"
+HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "libexec")
+COMMANDS = {"pair": "pair.py", "push": "push.py", "statusline": "claude-statusline.py"}
+
+
+def main():
+    arguments = sys.argv[1:]
+    if arguments[:1] == ["--version"]:
+        print("baran " + VERSION)
+        return 0
+    if not arguments or arguments[0] in ("-h", "--help", "help") or arguments[0] not in COMMANDS:
+        print(__doc__.strip(), file=sys.stdout if arguments[:1] and arguments[0] in ("-h", "--help", "help") else sys.stderr)
+        return 0 if arguments[:1] and arguments[0] in ("-h", "--help", "help") else 2
+    script = os.path.join(HERE, COMMANDS[arguments[0]])
+    os.execv(sys.executable, [sys.executable, script] + arguments[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
