@@ -9,7 +9,8 @@ you connect to and does three things:
 - `baran push` sends a push notification to your phone straight through Apple's
   push service (no server in between) when an agent is waiting for you.
 - `baran statusline` is a Claude Code status line that also records your plan
-  limits, so the app can show them.
+  limits, so the app can show them. Every five minutes it also asks Anthropic
+  for the per-model weekly limits (Fable), using Claude Code's own login.
 
 Needs Python 3 and nothing else. macOS and Linux.
 
@@ -78,6 +79,7 @@ Copy `extensions/baran-push.ts` to `~/.pi/agent/extensions/`.
 | QR payload: `{"herdr":1,"n":name,"h":host,"p":port,"u":user,"c":command,"k":key}` | `baran pair` | app |
 | `~/.config/baran/devices.json` | app | `baran push` |
 | `~/.claude/usage-limits.json` | `baran statusline` | app |
+| `~/.claude/usage-scoped.json` | `baran statusline` | app |
 
 ## License
 

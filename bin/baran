@@ -13,7 +13,7 @@
 import os
 import sys
 
-VERSION = "0.1"
+VERSION = "0.2"
 HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "libexec")
 COMMANDS = {"pair": "pair.py", "push": "push.py", "statusline": "claude-statusline.py"}
 
