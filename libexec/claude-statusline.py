@@ -18,6 +18,7 @@ import urllib.request
 
 SCOPED = os.path.expanduser("~/.claude/usage-scoped.json")
 REFRESH_EVERY = 300
+PLAN_WINDOWS = {"session": "five_hour", "weekly_all": "seven_day"}
 
 
 def save(path, value):
@@ -50,15 +51,19 @@ def refresh():
         "Authorization": "Bearer " + access, "anthropic-beta": "oauth-2025-04-20"})
     with urllib.request.urlopen(request, timeout=15) as response:
         usage = json.load(response)
-    scoped = []
+    stored = {"scoped": [], "ts": time.time()}
     for limit in usage.get("limits") or []:
-        name = ((limit.get("scope") or {}).get("model") or {}).get("display_name")
-        if limit.get("kind") != "weekly_scoped" or not name or limit.get("percent") is None:
+        if limit.get("percent") is None:
             continue
         resets = limit.get("resets_at")
-        scoped.append({"name": name, "used_percentage": limit["percent"],
-                       "resets_at": datetime.datetime.fromisoformat(resets).timestamp() if resets else None})
-    stored = {"scoped": scoped, "ts": time.time()}
+        window = {"used_percentage": limit["percent"],
+                  "resets_at": datetime.datetime.fromisoformat(resets).timestamp() if resets else None}
+        name = ((limit.get("scope") or {}).get("model") or {}).get("display_name")
+        if limit.get("kind") == "weekly_scoped" and name:
+            stored["scoped"].append({"name": name, **window})
+        # Claude Code leaves a window out of the status line hand-off at times.
+        elif limit.get("kind") in PLAN_WINDOWS:
+            stored[PLAN_WINDOWS[limit["kind"]]] = window
     save(SCOPED, stored)
     return stored
 
