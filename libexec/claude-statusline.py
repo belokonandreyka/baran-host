@@ -33,8 +33,11 @@ def save(path, value):
 def token():
     """Claude Code's login: the Keychain on macOS, a file elsewhere."""
     try:
-        raw = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
-                             capture_output=True, text=True, timeout=10).stdout
+        try:
+            raw = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                                 capture_output=True, text=True, timeout=10).stdout
+        except OSError:
+            raw = ""
         if not raw.strip():
             raw = open(os.path.expanduser("~/.claude/.credentials.json")).read()
         return json.loads(raw)["claudeAiOauth"]["accessToken"]
