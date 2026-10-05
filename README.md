@@ -20,7 +20,14 @@ Needs Python 3 and nothing else. macOS and Linux.
 brew install belokonandreyka/baran/baran
 ```
 
-Without Homebrew, clone the repository and put `bin/baran` on your `PATH`.
+Without Homebrew (Linux, a NAS):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/belokonandreyka/baran-host/main/install.sh | sh
+```
+
+That unpacks the tools into `~/.local/share/baran` and links `~/.local/bin/baran`;
+run it again to update. It needs curl, tar and python3.
 
 ## Pair a machine
 
