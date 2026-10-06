@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the Baran host tools without Homebrew (Linux, or a Mac without it):
-#   curl -fsSL https://raw.githubusercontent.com/belokonandreyka/baran-host/main/install.sh | sh
+#   curl -fsSL https://baran.party/install.sh | sh
 # Needs curl, tar and python3. Run it again to update.
 set -eu
 

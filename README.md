@@ -23,7 +23,7 @@ brew install belokonandreyka/baran/baran
 Without Homebrew (Linux, a NAS):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/belokonandreyka/baran-host/main/install.sh | sh
+curl -fsSL https://baran.party/install.sh | sh
 ```
 
 That unpacks the tools into `~/.local/share/baran` and links `~/.local/bin/baran`;
