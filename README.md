@@ -79,6 +79,15 @@ through Apple's push service.
 
 Copy `extensions/baran-push.ts` to `~/.pi/agent/extensions/`.
 
+## Host status
+
+`baran doctor` lists what works on this host (APNs key, registered phone, push
+tools, herdr, SFTP), its version against the newest one, and the agent hooks.
+`baran integrate claude|pi` sets the hooks up and `--remove` takes them out;
+`~/.claude/settings.json` is backed up to `settings.json.bak-baran` first, and
+another status line is left alone. The app runs both over SSH (long-press a
+connection → Host status).
+
 ## Files the app and the host share
 
 | File | Written by | Read by |

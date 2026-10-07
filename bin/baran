@@ -6,16 +6,20 @@
   baran push notify TITLE BODY   the same, but silent while the Mac is in use
   baran push claude-hook         notify from a Claude Code hook (reads stdin)
   baran statusline               Claude Code status line that records plan limits
+  baran doctor [--json]          what works on this host, versions, integrations
+  baran integrate claude|pi      set up (or --remove) the agent hooks
   baran --version
 
 `baran <command> --help` shows the options of a command.
 """
 import os
+import shutil
 import sys
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "libexec")
-COMMANDS = {"pair": "pair.py", "push": "push.py", "statusline": "claude-statusline.py"}
+COMMANDS = {"pair": "pair.py", "push": "push.py", "statusline": "claude-statusline.py",
+            "doctor": "doctor.py", "integrate": "doctor.py"}
 
 
 def main():
@@ -27,7 +31,11 @@ def main():
         print(__doc__.strip(), file=sys.stdout if arguments[:1] and arguments[0] in ("-h", "--help", "help") else sys.stderr)
         return 0 if arguments[:1] and arguments[0] in ("-h", "--help", "help") else 2
     script = os.path.join(HERE, COMMANDS[arguments[0]])
-    os.execv(sys.executable, [sys.executable, script] + arguments[1:])
+    # Hooks are written with the path the user runs (the brew or ~/.local/bin link).
+    called = sys.argv[0] if "/" in sys.argv[0] else (shutil.which(sys.argv[0]) or sys.argv[0])
+    os.environ.setdefault("BARAN_BIN", os.path.abspath(called))
+    rest = arguments if COMMANDS[arguments[0]] == "doctor.py" else arguments[1:]
+    os.execv(sys.executable, [sys.executable, script] + rest)
 
 
 if __name__ == "__main__":

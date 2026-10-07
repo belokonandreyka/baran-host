@@ -5,10 +5,13 @@
 // Install: copy to ~/.pi/agent/extensions/baran-push.ts
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { basename } from "node:path";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
 
 // Homebrew puts it here; pi does not always inherit the login PATH.
-const baran = ["/opt/homebrew/bin/baran", "/usr/local/bin/baran"].find((path) => existsSync(path));
+const baran = ["/opt/homebrew/bin/baran", "/usr/local/bin/baran", join(homedir(), ".local/bin/baran")].find((path) =>
+  existsSync(path),
+);
 
 function lastReply(ctx): string {
   try {
