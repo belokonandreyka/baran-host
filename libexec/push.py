@@ -7,6 +7,7 @@ APNs key from the developer account.
   baran push send "Title" "Body"    send to every registered phone
   baran push notify "Title" "Body"  same, but silent while the Mac is in use
   baran push claude-hook            notify, fed by a Claude Code hook on stdin
+  baran push codex-hook             the same for a Codex hook (Stop, PermissionRequest)
 
 Config, ~/.config/baran/apns.json:
   {"team_id": "ABCDE12345", "key_id": "XYZ987ABCD", "key_path": "~/.config/baran/AuthKey_XYZ987ABCD.p8"}
@@ -157,6 +158,28 @@ def claude_hook():
     return notify(f"Claude · {folder}", event.get("message") or "Потрібна ваша відповідь.")
 
 
+def codex_hook():
+    """Codex sends the reply itself on Stop; nothing is printed, so Codex
+    reads no decision from this hook and carries on as it would."""
+    try:
+        event = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    folder = os.path.basename(event.get("cwd") or "") or "Codex"
+    if event.get("hook_event_name") == "Stop":
+        said = event.get("last_assistant_message")
+        body = excerpt(said) if isinstance(said, str) and said.strip() else "Закінчив і чекає на вас."
+        return notify(f"Codex · {folder}", body)
+    if event.get("hook_event_name") == "PermissionRequest":
+        tool = event.get("tool_input") or {}
+        what = tool.get("command") if isinstance(tool, dict) else None
+        if isinstance(what, list):
+            what = " ".join(map(str, what))
+        detail = excerpt(f"{event.get('tool_name') or ''} {what or ''}".strip(), 120)
+        return notify(f"Codex · {folder}", "Потрібен дозвіл" + (f": {detail}" if detail else ""))
+    return 0
+
+
 if __name__ == "__main__":
     if sys.argv[1:2] == ["send"] and len(sys.argv) == 4:
         sys.exit(send(sys.argv[2], sys.argv[3]))
@@ -164,5 +187,7 @@ if __name__ == "__main__":
         sys.exit(notify(sys.argv[2], excerpt(sys.argv[3])))
     if sys.argv[1:2] == ["claude-hook"]:
         sys.exit(claude_hook())
+    if sys.argv[1:2] == ["codex-hook"]:
+        sys.exit(codex_hook())
     print(__doc__, file=sys.stderr)
     sys.exit(2)

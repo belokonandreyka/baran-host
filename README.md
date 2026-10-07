@@ -75,6 +75,13 @@ In `~/.claude/settings.json`:
 The notification body is the opening of Claude's last reply, so that text passes
 through Apple's push service.
 
+### Codex
+
+`baran integrate codex` adds `baran push codex-hook` for Stop and
+PermissionRequest to `~/.codex/hooks.json`, after any hooks already there.
+Codex runs hooks only with `hooks = true` under `[features]` in
+`~/.codex/config.toml`, and may ask to trust new ones.
+
 ### pi
 
 Copy `extensions/baran-push.ts` to `~/.pi/agent/extensions/`.
@@ -83,7 +90,7 @@ Copy `extensions/baran-push.ts` to `~/.pi/agent/extensions/`.
 
 `baran doctor` lists what works on this host (APNs key, registered phone, push
 tools, herdr, SFTP), its version against the newest one, and the agent hooks.
-`baran integrate claude|pi` sets the hooks up and `--remove` takes them out;
+`baran integrate claude|codex|pi` sets the hooks up and `--remove` takes them out;
 `~/.claude/settings.json` is backed up to `settings.json.bak-baran` first, and
 another status line is left alone. The app runs both over SSH (long-press a
 connection → Host status).

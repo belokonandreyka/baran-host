@@ -1,8 +1,8 @@
 """What works on this host for the Baran app, and the hooks it can set up.
 
   baran doctor [--json]              checks, versions and integrations
-  baran integrate claude|pi          install or update one integration
-  baran integrate claude|pi --remove take it out again
+  baran integrate claude|codex|pi           install or update one integration
+  baran integrate claude|codex|pi --remove  take it out again
 
 The app runs these over SSH; --json is what it reads.
 """
@@ -18,6 +18,9 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BASE = os.path.expanduser("~/.config/baran")
 CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
+CODEX_HOOKS = os.path.expanduser("~/.codex/hooks.json")
+CODEX_CONFIG = os.path.expanduser("~/.codex/config.toml")
+CODEX_EVENTS = ("Stop", "PermissionRequest")
 PI_EXTENSIONS = os.path.expanduser("~/.pi/agent/extensions")
 BUNDLED_PI = os.path.join(ROOT, "extensions", "baran-push.ts")
 LATEST = "https://baran.party/latest"
@@ -140,6 +143,63 @@ def claude_state():
     return {"id": "claude", "name": "Claude Code", "present": present, "state": state}
 
 
+def codex_hooks_enabled():
+    """Codex runs hooks.json only with `hooks = true` under [features]."""
+    try:
+        section = None
+        for line in open(CODEX_CONFIG, encoding="utf-8"):
+            stripped = line.strip()
+            if stripped.startswith("["):
+                section = stripped
+            elif section == "[features]" and re.match(r"hooks\s*=\s*true\b", stripped):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def codex_state():
+    present = bool(shutil.which("codex")) or os.path.isdir(os.path.expanduser("~/.codex"))
+    hooks = (read_json(CODEX_HOOKS) or {}).get("hooks") or {}
+    path = command_path()
+    ours = [h.get("command", "") for event in CODEX_EVENTS for entry in hooks.get(event) or []
+            for h in entry.get("hooks") or [] if "baran push codex-hook" in h.get("command", "")]
+    if not ours:
+        state = "missing"
+    elif len(ours) == len(CODEX_EVENTS) and all(c == f"{path} push codex-hook" for c in ours):
+        # Hooks in the file do nothing until the feature is on.
+        state = "installed" if codex_hooks_enabled() else "partial"
+    else:
+        state = "outdated"
+    return {"id": "codex", "name": "Codex", "present": present, "state": state}
+
+
+def integrate_codex(remove):
+    data = read_json(CODEX_HOOKS)
+    if data is None:
+        if os.path.exists(CODEX_HOOKS):
+            sys.exit("~/.codex/hooks.json is not valid JSON; not touching it")
+        data = {}
+    else:
+        shutil.copy(CODEX_HOOKS, CODEX_HOOKS + ".bak-baran")
+    hooks = data.setdefault("hooks", {})
+    for event in CODEX_EVENTS:
+        # Ours goes last, so the trust Codex keeps for other hooks by their
+        # position stays valid.
+        entries = [e for e in hooks.get(event) or []
+                   if not any("baran push codex-hook" in h.get("command", "") for h in e.get("hooks") or [])]
+        if not remove:
+            entries.append({"hooks": [{"type": "command", "command": f"{command_path()} push codex-hook"}]})
+        if entries:
+            hooks[event] = entries
+        else:
+            hooks.pop(event, None)
+    os.makedirs(os.path.dirname(CODEX_HOOKS), exist_ok=True)
+    with open(CODEX_HOOKS, "w", encoding="utf-8") as out:
+        json.dump(data, out, indent=2, ensure_ascii=False)
+        out.write("\n")
+
+
 def pi_state():
     present = bool(shutil.which("pi")) or os.path.isdir(os.path.expanduser("~/.pi"))
     target = os.path.join(PI_EXTENSIONS, "baran-push.ts")
@@ -206,7 +266,7 @@ def report():
         "install": install_kind(),
         "update_command": update_command(),
         "checks": checks(),
-        "integrations": [claude_state(), pi_state()],
+        "integrations": [claude_state(), codex_state(), pi_state()],
     }
 
 
@@ -226,13 +286,17 @@ def doctor(arguments):
 
 def integrate(arguments):
     names = [a for a in arguments if not a.startswith("-")]
-    if len(names) != 1 or names[0] not in ("claude", "pi"):
-        print("usage: baran integrate claude|pi [--remove]", file=sys.stderr)
+    actions = {"claude": (integrate_claude, claude_state), "codex": (integrate_codex, codex_state),
+               "pi": (integrate_pi, pi_state)}
+    if len(names) != 1 or names[0] not in actions:
+        print("usage: baran integrate claude|codex|pi [--remove]", file=sys.stderr)
         return 2
-    remove = "--remove" in arguments
-    {"claude": integrate_claude, "pi": integrate_pi}[names[0]](remove)
-    state = (claude_state if names[0] == "claude" else pi_state)()["state"]
-    print(f"{names[0]}: {state}")
+    change, state = actions[names[0]]
+    change("--remove" in arguments)
+    print(f"{names[0]}: {state()['state']}")
+    if names[0] == "codex" and "--remove" not in arguments:
+        print("If Codex asks on its next start, trust the new hooks." if codex_hooks_enabled()
+              else "Turn hooks on in ~/.codex/config.toml: [features] hooks = true")
     return 0
 
 
