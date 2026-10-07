@@ -38,6 +38,11 @@ def latest():
         return None
 
 
+def newer_than(a, b):
+    parts = lambda v: [int(x) if x.isdigit() else 0 for x in v.split(".")]
+    return parts(a) > parts(b)
+
+
 def command_path():
     """How hooks should call baran: the link the user runs, not the file behind it."""
     return os.environ.get("BARAN_BIN") or shutil.which("baran") or os.path.join(ROOT, "bin", "baran")
@@ -210,7 +215,8 @@ def doctor(arguments):
     if "--json" in arguments:
         print(json.dumps(data, ensure_ascii=False))
         return 0
-    print(f"baran {data['version']}" + (f" (newest {data['latest']})" if data["latest"] and data["latest"] != data["version"] else ""))
+    newer = data["latest"] and newer_than(data["latest"], data["version"])
+    print(f"baran {data['version']}" + (f" (newest {data['latest']})" if newer else ""))
     for item in data["checks"]:
         print(("  ok   " if item["ok"] else "  --   ") + f"{item['title']}: {item['detail']}")
     for item in data["integrations"]:
