@@ -21,6 +21,9 @@ CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
 CODEX_HOOKS = os.path.expanduser("~/.codex/hooks.json")
 CODEX_CONFIG = os.path.expanduser("~/.codex/config.toml")
 CODEX_EVENTS = ("Stop", "PermissionRequest")
+# Stop: the reply. The others: Claude waits for you (a permission, a
+# question, a plan to approve).
+CLAUDE_EVENTS = (("Stop", None), ("PermissionRequest", None), ("PreToolUse", "AskUserQuestion|ExitPlanMode"))
 PI_EXTENSIONS = os.path.expanduser("~/.pi/agent/extensions")
 BUNDLED_PI = os.path.join(ROOT, "extensions", "baran-push.ts")
 LATEST = "https://baran.party/latest"
@@ -128,9 +131,11 @@ def claude_state():
     def commands(event):
         return [h.get("command", "") for entry in hooks.get(event) or [] for h in entry.get("hooks") or []]
 
-    ours = [c for event in ("Stop", "Notification") for c in commands(event) if "baran push claude-hook" in c]
+    ours = [c for event in hooks for c in commands(event) if "baran push claude-hook" in c]
     line = (settings.get("statusLine") or {}).get("command", "")
-    hooks_current = len(ours) == 2 and all(c == f"{path} push claude-hook" for c in ours)
+    placed = sorted(event for event in hooks if any("baran push claude-hook" in c for c in commands(event)))
+    hooks_current = placed == sorted(e for e, _ in CLAUDE_EVENTS) and len(ours) == len(CLAUDE_EVENTS) \
+        and all(c == f"{path} push claude-hook" for c in ours)
     if not ours and "baran statusline" not in line:
         state = "missing"
     elif hooks_current and line == f"{path} statusline":
@@ -220,10 +225,16 @@ def integrate_claude(remove):
         shutil.copy(CLAUDE_SETTINGS, CLAUDE_SETTINGS + ".bak-baran")
     path = command_path()
     hooks = settings.setdefault("hooks", {})
-    for event, matcher in (("Stop", None), ("Notification", "permission_prompt")):
-        entries = [e for e in hooks.get(event) or []
-                   if not any("baran push claude-hook" in h.get("command", "") for h in e.get("hooks") or [])]
-        if not remove:
+    wanted = dict(CLAUDE_EVENTS)
+    # Older versions hooked Notification; every event is cleaned of ours first.
+    for event in list(hooks) + [e for e in wanted if e not in hooks]:
+        entries = []
+        for entry in hooks.get(event) or []:
+            kept = [h for h in entry.get("hooks") or [] if "baran push claude-hook" not in h.get("command", "")]
+            if kept:
+                entries.append({**entry, "hooks": kept})
+        matcher = wanted.get(event)
+        if not remove and event in wanted:
             entry = {"hooks": [{"type": "command", "command": f"{path} push claude-hook"}]}
             if matcher:
                 entry = {"matcher": matcher, **entry}

@@ -55,7 +55,8 @@ Without either file it does nothing and exits 0, so a hook never breaks an agent
 
 ```sh
 baran push send "Title" "Body"      # always
-baran push notify "Title" "Body"    # silent while this Mac's keyboard or mouse is in use
+baran push notify "Title" "Body"    # silent while this Mac's keyboard or mouse is in use,
+                                    # except for phones set to "even when I'm at the Mac"
 ```
 
 ### Claude Code
@@ -67,7 +68,8 @@ In `~/.claude/settings.json`:
   "statusLine": {"type": "command", "command": "baran statusline"},
   "hooks": {
     "Stop": [{"hooks": [{"type": "command", "command": "baran push claude-hook"}]}],
-    "Notification": [{"matcher": "permission_prompt", "hooks": [{"type": "command", "command": "baran push claude-hook"}]}]
+    "PermissionRequest": [{"hooks": [{"type": "command", "command": "baran push claude-hook"}]}],
+    "PreToolUse": [{"matcher": "AskUserQuestion|ExitPlanMode", "hooks": [{"type": "command", "command": "baran push claude-hook"}]}]
   }
 }
 ```

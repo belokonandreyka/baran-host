@@ -67,12 +67,15 @@ def provider_token(config):
     return jwt
 
 
-def send(title, body):
+def send(title, body, only_always=False):
+    """`only_always`: just the phones that asked to hear even while the Mac is in use."""
     try:
         config = json.load(open(os.path.join(BASE, "apns.json")))
         devices = json.load(open(os.path.join(BASE, "devices.json")))
     except (OSError, ValueError):
         return 0
+    if only_always:
+        devices = [d for d in devices if d.get("always")]
     if not devices:
         return 0
     jwt = provider_token(config)
@@ -95,8 +98,10 @@ def send(title, body):
         if status == "410" or "BadDeviceToken" in reply:
             gone.append(device["token"])
     if gone:
+        # Re-read: the filter above may have left phones out of `devices`.
+        everyone = json.load(open(os.path.join(BASE, "devices.json")))
         with open(os.path.join(BASE, "devices.json"), "w") as out:
-            json.dump([d for d in devices if d["token"] not in gone], out, indent=1)
+            json.dump([d for d in everyone if d["token"] not in gone], out, indent=1)
     return 1 if failed else 0
 
 
@@ -111,7 +116,7 @@ def at_the_mac():
 
 
 def notify(title, body):
-    return 0 if at_the_mac() else send(title, body)
+    return send(title, body, only_always=at_the_mac())
 
 
 def excerpt(text, limit=160):
@@ -153,9 +158,23 @@ def claude_hook():
     except ValueError:
         return 0
     folder = os.path.basename(event.get("cwd") or "") or "Claude"
-    if event.get("hook_event_name") == "Stop":
-        return notify(f"Claude · {folder}", excerpt(last_reply(event)) or "Закінчив і чекає на вас.")
-    return notify(f"Claude · {folder}", event.get("message") or "Потрібна ваша відповідь.")
+    name = event.get("hook_event_name")
+    title = f"Claude · {folder}"
+    if name == "Stop":
+        return notify(title, excerpt(last_reply(event)) or "Закінчив і чекає на вас.")
+    # Claude stops and waits for you: these go out even while you are at the Mac.
+    tool = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    if name == "PermissionRequest":
+        what = tool.get("command") or tool.get("file_path") or tool.get("url") or ""
+        detail = excerpt(f"{event.get('tool_name') or ''} {what}".strip(), 120)
+        return send(title, "Потрібен дозвіл" + (f": {detail}" if detail else ""))
+    if name == "PreToolUse" and event.get("tool_name") == "AskUserQuestion":
+        questions = tool.get("questions") or []
+        asked = questions[0].get("question") if questions and isinstance(questions[0], dict) else ""
+        return send(title, "Питає: " + excerpt(asked) if asked else "Має до вас питання.")
+    if name == "PreToolUse" and event.get("tool_name") == "ExitPlanMode":
+        return send(title, "План готовий і чекає на схвалення.")
+    return notify(title, event.get("message") or "Потрібна ваша відповідь.")
 
 
 def codex_hook():
