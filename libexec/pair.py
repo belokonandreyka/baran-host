@@ -18,6 +18,7 @@ your own phone; it is wiped from the screen when you press Enter.
 Needs nothing but Python 3 and ssh-keygen.
 """
 import argparse
+import base64
 import getpass
 import json
 import os
@@ -274,7 +275,30 @@ def new_key(authorized_keys):
     existing = open(authorized_keys).read() if os.path.exists(authorized_keys) else ""
     with open(os.open(authorized_keys, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as out:
         out.write(("" if not existing or existing.endswith("\n") else "\n") + public + "\n")
-    return "".join(line for line in private.splitlines() if not line.startswith("-----")), comment
+    return seed_of(private), comment
+
+
+def seed_of(private):
+    """The 32-byte ed25519 seed of an unencrypted OpenSSH key, base64. The app
+    rebuilds the key file from it, so the code stays small (41 modules, not 69)."""
+    blob = base64.b64decode("".join(line for line in private.splitlines() if not line.startswith("-----")))
+    at = len(b"openssh-key-v1\0")
+
+    def field():
+        nonlocal at
+        size = int.from_bytes(blob[at:at + 4], "big")
+        at += 4 + size
+        return blob[at - size:at]
+
+    field(), field(), field()   # cipher, kdf, kdf options: none for a fresh key
+    at += 4                     # number of keys
+    field()                     # public key
+    section = field()
+    at, blob = 8, section       # skip the two check words
+    if field() != b"ssh-ed25519":
+        raise ValueError("not an ed25519 key")
+    field()                     # public half
+    return base64.b64encode(field()[:32]).decode()
 
 
 def main():
@@ -294,7 +318,7 @@ def main():
             "u": options.user, "c": options.command}
     comment = None
     if not options.no_key:
-        code["k"], comment = new_key(options.authorized_keys)
+        code["s"], comment = new_key(options.authorized_keys)
     matrix = qr_matrix(json.dumps(code, separators=(",", ":"), ensure_ascii=False).encode())
 
     width = len(matrix) + 4
