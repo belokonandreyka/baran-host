@@ -267,7 +267,9 @@ def hermes_enabled():
 
 
 def hermes_state():
-    present = bool(hermes_cli()) or os.path.isdir(HERMES_HOME)
+    # ~/.hermes alone proves nothing: other tools create it on machines
+    # without Hermes.
+    present = bool(hermes_cli())
     if not os.path.isdir(HERMES_PLUGIN):
         state = "missing"
     else:
@@ -288,12 +290,12 @@ def integrate_hermes(remove):
             subprocess.run([cli, "plugins", "disable", "baran-push"], capture_output=True, timeout=60)
         shutil.rmtree(HERMES_PLUGIN, ignore_errors=True)
         return
+    if not cli:
+        sys.exit("Hermes is not installed on this host")
     os.makedirs(HERMES_PLUGIN, exist_ok=True)
     for name, text in hermes_files().items():
         with open(os.path.join(HERMES_PLUGIN, name), "w", encoding="utf-8") as out:
             out.write(text)
-    if not cli:
-        sys.exit("hermes is not on PATH; enable it with: hermes plugins enable baran-push")
     if not hermes_enabled():
         done = subprocess.run([cli, "plugins", "enable", "baran-push"], capture_output=True, text=True, timeout=60)
         if done.returncode != 0:
