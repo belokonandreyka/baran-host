@@ -84,6 +84,13 @@ PermissionRequest to `~/.codex/hooks.json`, after any hooks already there.
 Codex runs hooks only with `hooks = true` under `[features]` in
 `~/.codex/config.toml`, and may ask to trust new ones.
 
+### Hermes
+
+`baran integrate hermes` installs the `baran-push` plugin into
+`~/.hermes/plugins` and enables it. It pushes only from interactive (cli)
+sessions: the reply, an approval request, a clarifying question. Restart
+hermes sessions and the gateway to load it.
+
 ### pi
 
 Copy `extensions/baran-push.ts` to `~/.pi/agent/extensions/`.
@@ -92,7 +99,7 @@ Copy `extensions/baran-push.ts` to `~/.pi/agent/extensions/`.
 
 `baran doctor` lists what works on this host (APNs key, registered phone, push
 tools, herdr, SFTP), its version against the newest one, and the agent hooks.
-`baran integrate claude|codex|pi` sets the hooks up and `--remove` takes them out;
+`baran integrate claude|codex|hermes|pi` sets the hooks up and `--remove` takes them out;
 `~/.claude/settings.json` is backed up to `settings.json.bak-baran` first, and
 another status line is left alone. The app runs both over SSH (long-press a
 connection → Host status).

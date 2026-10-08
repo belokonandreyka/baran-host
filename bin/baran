@@ -8,7 +8,8 @@
   baran push codex-hook          notify from a Codex hook (reads stdin)
   baran statusline               Claude Code status line that records plan limits
   baran doctor [--json]          what works on this host, versions, integrations
-  baran integrate claude|codex|pi  set up (or --remove) the agent hooks
+  baran integrate claude|codex|hermes|pi  set up (or --remove) the agent hooks
+  baran fix herdr                one-tap fixes the app offers
   baran --version
 
 `baran <command> --help` shows the options of a command.
@@ -17,10 +18,10 @@ import os
 import shutil
 import sys
 
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "libexec")
 COMMANDS = {"pair": "pair.py", "push": "push.py", "statusline": "claude-statusline.py",
-            "doctor": "doctor.py", "integrate": "doctor.py"}
+            "doctor": "doctor.py", "integrate": "doctor.py", "fix": "doctor.py"}
 
 
 def main():

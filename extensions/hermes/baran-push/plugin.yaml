@@ -1,0 +1,3 @@
+name: baran-push
+version: "1.0"
+description: Pushes to the Baran iOS app when an interactive Hermes turn ends or waits for you

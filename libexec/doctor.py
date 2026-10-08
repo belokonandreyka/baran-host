@@ -1,8 +1,9 @@
 """What works on this host for the Baran app, and the hooks it can set up.
 
   baran doctor [--json]              checks, versions and integrations
-  baran integrate claude|codex|pi           install or update one integration
-  baran integrate claude|codex|pi --remove  take it out again
+  baran integrate claude|codex|hermes|pi           install or update one integration
+  baran integrate claude|codex|hermes|pi --remove  take it out again
+  baran fix herdr                                  install herdr with its own installer
 
 The app runs these over SSH; --json is what it reads.
 """
@@ -26,6 +27,9 @@ CODEX_EVENTS = ("Stop", "PermissionRequest")
 CLAUDE_EVENTS = (("Stop", None), ("PermissionRequest", None), ("PreToolUse", "AskUserQuestion|ExitPlanMode"))
 PI_EXTENSIONS = os.path.expanduser("~/.pi/agent/extensions")
 BUNDLED_PI = os.path.join(ROOT, "extensions", "baran-push.ts")
+BUNDLED_HERMES = os.path.join(ROOT, "extensions", "hermes", "baran-push")
+HERMES_HOME = os.path.expanduser("~/.hermes")
+HERMES_PLUGIN = os.path.join(HERMES_HOME, "plugins", "baran-push")
 LATEST = "https://baran.party/latest"
 
 
@@ -82,19 +86,20 @@ def read_json(path):
 def checks():
     found = []
 
-    def check(key, title, ok, detail):
-        found.append({"id": key, "title": title, "ok": bool(ok), "detail": detail})
+    def check(key, title, ok, detail, fix=None):
+        # `fix` names what the app can do about a failed check.
+        found.append({"id": key, "title": title, "ok": bool(ok), "detail": detail, "fix": None if ok else fix})
 
     apns = read_json(os.path.join(BASE, "apns.json")) or {}
     key_file = os.path.expanduser(apns.get("key_path", "")) if apns else ""
     check("apns", "Ключ сповіщень", key_file and os.path.exists(key_file),
           "~/.config/baran/apns.json і ключ .p8 на місці" if key_file and os.path.exists(key_file)
-          else "Немає ~/.config/baran/apns.json або ключа .p8: пуші не підуть")
+          else "Немає ~/.config/baran/apns.json або ключа .p8: пуші не підуть", fix="apns")
 
     devices = read_json(os.path.join(BASE, "devices.json")) or []
     check("devices", "Телефон", devices,
           f"Зареєстровано пристроїв: {len(devices)}" if devices
-          else "Жоден телефон не зареєстрований: увімкніть сповіщення в застосунку")
+          else "Жоден телефон не зареєстрований: увімкніть сповіщення в застосунку", fix="devices")
 
     tools = [name for name in ("python3", "openssl", "curl") if not shutil.which(name)]
     http2 = False
@@ -106,7 +111,8 @@ def checks():
 
     herdr = shutil.which("herdr") or next((p for p in (os.path.expanduser("~/.local/bin/herdr"), "/opt/homebrew/bin/herdr")
                                           if os.path.exists(p)), None)
-    check("herdr", "herdr", herdr, "Сесії, сайдбар і чат" if herdr else "Не встановлено: лише звичайний термінал")
+    check("herdr", "herdr", herdr, "Сесії, сайдбар і чат" if herdr else "Не встановлено: лише звичайний термінал",
+          fix="herdr")
 
     sftp = False
     try:
@@ -179,6 +185,28 @@ def codex_state():
     return {"id": "codex", "name": "Codex", "present": present, "state": state}
 
 
+def enable_codex_hooks():
+    """Puts `hooks = true` under [features] in ~/.codex/config.toml."""
+    try:
+        lines = open(CODEX_CONFIG, encoding="utf-8").read().splitlines()
+        shutil.copy(CODEX_CONFIG, CODEX_CONFIG + ".bak-baran")
+    except OSError:
+        lines = []
+    start = next((i for i, line in enumerate(lines) if line.strip() == "[features]"), None)
+    if start is None:
+        lines += ["", "[features]", "hooks = true"]
+    else:
+        end = next((i for i in range(start + 1, len(lines)) if lines[i].strip().startswith("[")), len(lines))
+        found = next((i for i in range(start + 1, end) if re.match(r"\s*hooks\s*=", lines[i])), None)
+        if found is None:
+            lines.insert(start + 1, "hooks = true")
+        else:
+            lines[found] = "hooks = true"
+    os.makedirs(os.path.dirname(CODEX_CONFIG), exist_ok=True)
+    with open(CODEX_CONFIG, "w", encoding="utf-8") as out:
+        out.write("\n".join(lines).lstrip("\n") + "\n")
+
+
 def integrate_codex(remove):
     data = read_json(CODEX_HOOKS)
     if data is None:
@@ -203,6 +231,73 @@ def integrate_codex(remove):
     with open(CODEX_HOOKS, "w", encoding="utf-8") as out:
         json.dump(data, out, indent=2, ensure_ascii=False)
         out.write("\n")
+    if not remove and not codex_hooks_enabled():
+        enable_codex_hooks()
+
+
+def hermes_cli():
+    return shutil.which("hermes") or next(
+        (p for p in (os.path.expanduser("~/.local/bin/hermes"),) if os.path.exists(p)), None)
+
+
+def hermes_files():
+    """The plugin as it should be on this host, with the baran path filled in."""
+    files = {}
+    for name in sorted(os.listdir(BUNDLED_HERMES)):
+        if name.endswith((".py", ".yaml")):
+            text = open(os.path.join(BUNDLED_HERMES, name), encoding="utf-8").read()
+            files[name] = text.replace("@BARAN@", command_path())
+    return files
+
+
+def hermes_enabled():
+    """Listed under plugins.enabled in ~/.hermes/config.yaml."""
+    try:
+        inside = False
+        for line in open(os.path.join(HERMES_HOME, "config.yaml"), encoding="utf-8"):
+            if re.match(r"\s*enabled:\s*$", line):
+                inside = True
+            elif inside and re.match(r"\s*-\s*baran-push\s*$", line):
+                return True
+            elif inside and not re.match(r"\s*-", line):
+                inside = False
+    except OSError:
+        pass
+    return False
+
+
+def hermes_state():
+    present = bool(hermes_cli()) or os.path.isdir(HERMES_HOME)
+    if not os.path.isdir(HERMES_PLUGIN):
+        state = "missing"
+    else:
+        current = all(open(os.path.join(HERMES_PLUGIN, name), encoding="utf-8").read() == text
+                      for name, text in hermes_files().items() if os.path.exists(os.path.join(HERMES_PLUGIN, name)))
+        complete = all(os.path.exists(os.path.join(HERMES_PLUGIN, name)) for name in hermes_files())
+        if not (current and complete):
+            state = "outdated"
+        else:
+            state = "installed" if hermes_enabled() else "partial"
+    return {"id": "hermes", "name": "Hermes", "present": present, "state": state}
+
+
+def integrate_hermes(remove):
+    cli = hermes_cli()
+    if remove:
+        if cli:
+            subprocess.run([cli, "plugins", "disable", "baran-push"], capture_output=True, timeout=60)
+        shutil.rmtree(HERMES_PLUGIN, ignore_errors=True)
+        return
+    os.makedirs(HERMES_PLUGIN, exist_ok=True)
+    for name, text in hermes_files().items():
+        with open(os.path.join(HERMES_PLUGIN, name), "w", encoding="utf-8") as out:
+            out.write(text)
+    if not cli:
+        sys.exit("hermes is not on PATH; enable it with: hermes plugins enable baran-push")
+    if not hermes_enabled():
+        done = subprocess.run([cli, "plugins", "enable", "baran-push"], capture_output=True, text=True, timeout=60)
+        if done.returncode != 0:
+            sys.exit((done.stderr or done.stdout).strip() or "hermes plugins enable failed")
 
 
 def pi_state():
@@ -277,7 +372,7 @@ def report():
         "install": install_kind(),
         "update_command": update_command(),
         "checks": checks(),
-        "integrations": [claude_state(), codex_state(), pi_state()],
+        "integrations": [claude_state(), codex_state(), hermes_state(), pi_state()],
     }
 
 
@@ -298,17 +393,26 @@ def doctor(arguments):
 def integrate(arguments):
     names = [a for a in arguments if not a.startswith("-")]
     actions = {"claude": (integrate_claude, claude_state), "codex": (integrate_codex, codex_state),
-               "pi": (integrate_pi, pi_state)}
+               "hermes": (integrate_hermes, hermes_state), "pi": (integrate_pi, pi_state)}
     if len(names) != 1 or names[0] not in actions:
-        print("usage: baran integrate claude|codex|pi [--remove]", file=sys.stderr)
+        print("usage: baran integrate claude|codex|hermes|pi [--remove]", file=sys.stderr)
         return 2
     change, state = actions[names[0]]
     change("--remove" in arguments)
     print(f"{names[0]}: {state()['state']}")
+    if names[0] == "hermes" and "--remove" not in arguments:
+        print("Hermes loads plugins when it starts: restart running hermes sessions and the gateway.")
     if names[0] == "codex" and "--remove" not in arguments:
-        print("If Codex asks on its next start, trust the new hooks." if codex_hooks_enabled()
-              else "Turn hooks on in ~/.codex/config.toml: [features] hooks = true")
+        print("If Codex asks on its next start, trust the new hooks.")
     return 0
+
+
+def fix(arguments):
+    if arguments == ["herdr"]:
+        # herdr's own installer; it puts the binary on PATH (~/.local/bin).
+        return subprocess.run("curl -fsSL https://herdr.dev/install.sh | sh", shell=True).returncode
+    print("usage: baran fix herdr", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":
@@ -316,4 +420,4 @@ if __name__ == "__main__":
     if "--help" in rest or "-h" in rest:
         print(__doc__.strip())
         sys.exit(0)
-    sys.exit(integrate(rest) if mode == "integrate" else doctor(rest))
+    sys.exit(integrate(rest) if mode == "integrate" else fix(rest) if mode == "fix" else doctor(rest))
