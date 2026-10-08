@@ -71,6 +71,57 @@ def refresh():
     return stored
 
 
+def refresh_in_gui():
+    """Over SSH on a Mac the shell sits in the Background session, where the
+    Keychain answers errSecInteractionNotAllowed; a one-shot launchd job in
+    gui/<uid> runs in the login (Aqua) session and can read it."""
+    label = "local.baran.usage-refresh"
+    plist = os.path.join(os.environ.get("TMPDIR", "/tmp"), label + ".plist")
+    with open(plist, "w") as out:
+        out.write(f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>{label}</string>
+  <key>ProgramArguments</key><array>
+    <string>{sys.executable}</string><string>{os.path.realpath(__file__)}</string><string>--refresh</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+</dict></plist>
+""")
+    domain = f"gui/{os.getuid()}"
+    subprocess.run(["launchctl", "bootout", f"{domain}/{label}"], capture_output=True)
+    before = stored_at()
+    subprocess.run(["launchctl", "bootstrap", domain, plist], capture_output=True)
+    for _ in range(40):
+        time.sleep(0.5)
+        if stored_at() > before:
+            break
+    subprocess.run(["launchctl", "bootout", f"{domain}/{label}"], capture_output=True)
+
+
+def stored_at():
+    try:
+        return json.load(open(SCOPED)).get("ts") or 0
+    except (OSError, ValueError):
+        return 0
+
+
+if sys.argv[1:2] == ["--refresh-if-stale"]:
+    # For the phone app, which reads the files over SSH and wants them fresh
+    # even when no Claude Code status line has run for hours.
+    if time.time() - stored_at() > REFRESH_EVERY:
+        manager = ""
+        if sys.platform == "darwin":
+            manager = subprocess.run(["launchctl", "managername"], capture_output=True, text=True).stdout.strip()
+        try:
+            if sys.platform == "darwin" and manager != "Aqua":
+                refresh_in_gui()
+            else:
+                refresh()
+        except Exception as error:
+            print(f"refresh failed: {error}", file=sys.stderr)
+    sys.exit(0)
+
 if sys.argv[1:2] == ["--refresh"]:
     try:
         print(json.dumps(refresh()))
