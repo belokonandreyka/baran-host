@@ -18,7 +18,7 @@ import os
 import shutil
 import sys
 
-VERSION = "0.3.5"
+VERSION = "0.3.6"
 HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "libexec")
 COMMANDS = {"pair": "pair.py", "push": "push.py", "statusline": "claude-statusline.py",
             "doctor": "doctor.py", "integrate": "doctor.py", "fix": "doctor.py"}
