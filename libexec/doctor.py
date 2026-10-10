@@ -90,20 +90,26 @@ def checks():
         # `fix` names what the app can do about a failed check.
         found.append({"id": key, "title": title, "ok": bool(ok), "detail": detail, "fix": None if ok else fix})
 
+    devices = read_json(os.path.join(BASE, "devices.json")) or []
     apns = read_json(os.path.join(BASE, "apns.json")) or {}
     key_file = os.path.expanduser(apns.get("key_path", "")) if apns else ""
-    check("apns", "Ключ сповіщень", key_file and os.path.exists(key_file),
-          "~/.config/baran/apns.json і ключ .p8 на місці" if key_file and os.path.exists(key_file)
-          else "Немає ~/.config/baran/apns.json або ключа .p8: пуші не підуть", fix="apns")
+    has_key = bool(key_file and os.path.exists(key_file))
+    # Phones registered through the relay need no key here; only older, direct entries do.
+    direct = [d for d in devices if d.get("token") and not d.get("relay")]
+    if devices and not direct:
+        check("apns", "Ключ сповіщень", True, "Не потрібен: пуші йдуть зашифрованими через релей baran.party")
+    else:
+        check("apns", "Ключ сповіщень", has_key,
+              "~/.config/baran/apns.json і ключ .p8 на місці" if has_key
+              else "Немає ~/.config/baran/apns.json або ключа .p8: пуші не підуть", fix="apns")
 
-    devices = read_json(os.path.join(BASE, "devices.json")) or []
     check("devices", "Телефон", devices,
           f"Зареєстровано пристроїв: {len(devices)}" if devices
           else "Жоден телефон не зареєстрований: увімкніть сповіщення в застосунку", fix="devices")
 
     tools = [name for name in ("python3", "openssl", "curl") if not shutil.which(name)]
-    http2 = False
-    if shutil.which("curl"):
+    http2 = bool(devices) and not direct  # the relay is plain HTTPS; HTTP/2 is only for talking to Apple
+    if shutil.which("curl") and not http2:
         http2 = "HTTP2" in subprocess.run(["curl", "--version"], capture_output=True, text=True).stdout
     check("tools", "Інструменти для пушів", not tools and http2,
           "python3, openssl і curl з HTTP/2" if not tools and http2

@@ -8,8 +8,10 @@ you connect to and does three things:
   address, user, port and a freshly authorized SSH key (`--text` prints the same
   as one line to paste, for when the code cannot be scanned, e.g. `baran pair`
   runs in Baran's own terminal on the phone).
-- `baran push` sends a push notification to your phone straight through Apple's
-  push service (no server in between) when an agent is waiting for you.
+- `baran push` sends a push notification to your phone when an agent is waiting
+  for you. The text is sealed on this machine with a key only your phone has,
+  and goes through the push relay at baran.party, which holds the APNs key and
+  cannot read it.
 - `baran statusline` is a Claude Code status line that also records your plan
   limits, so the app can show them. Every five minutes it also asks Anthropic
   for the per-model weekly limits (Fable), using Claude Code's own login.
@@ -47,14 +49,21 @@ to your own phone, then press Enter to wipe it from the screen.
 
 ## Notifications
 
-`baran push` needs an APNs key from your Apple developer account:
+Turn notifications on in the app: it registers the phone with the relay
+(baran.party) and writes `~/.config/baran/devices.json` on every host over SSH,
+with the relay address, the phone's id and secret, and the key that seals the
+text (ChaCha20-Poly1305, `libexec/seal.py`). Apple and the relay see only
+"new message" and the sealed box; the phone's notification extension opens it.
+No APNs key is needed on the host.
+
+Phones registered by older app versions carry a raw APNs token instead; those
+are sent to Apple directly and need the key from the Apple developer account:
 
 ```
 ~/.config/baran/apns.json     {"team_id": "...", "key_id": "...", "key_path": "~/.config/baran/AuthKey_XXXX.p8"}
-~/.config/baran/devices.json  written by the app over SSH when you enable notifications
 ```
 
-Without either file it does nothing and exits 0, so a hook never breaks an agent.
+Without phones it does nothing and exits 0, so a hook never breaks an agent.
 
 ```sh
 baran push send "Title" "Body"      # always
@@ -77,8 +86,9 @@ In `~/.claude/settings.json`:
 }
 ```
 
-The notification body is the opening of Claude's last reply, so that text passes
-through Apple's push service.
+The notification body is the opening of Claude's last reply. Through the relay
+it travels sealed; only for direct (older) entries does it pass through Apple's
+push service as plain text.
 
 ### Codex
 
@@ -112,7 +122,7 @@ connection → Host status).
 | File | Written by | Read by |
 |---|---|---|
 | QR payload: `{"herdr":1,"n":name,"h":host,"p":port,"u":user,"c":command,"s":ed25519 seed}`; with `--text`, `baran:` + its base64url | `baran pair` | app |
-| `~/.config/baran/devices.json` | app | `baran push` |
+| `~/.config/baran/devices.json` (relay id, secret and seal key per phone; mode 600) | app | `baran push` |
 | `~/.claude/usage-limits.json` | `baran statusline` | app |
 | `~/.claude/usage-scoped.json` | `baran statusline` | app |
 

@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Sends a push notification to the phones registered by the Baran iOS app.
+"""Sends a push notification to the phones registered by the Baran app.
 
-No server in between: this talks to Apple's push service directly, with the
-APNs key from the developer account.
+Phones registered through the push relay (baran.party) get the title and
+text sealed with their own key (ChaCha20-Poly1305, seal.py): the relay holds
+the APNs key and forwards the box, and only the phone can open it. Phones
+from older app versions carry a raw APNs token instead; those are sent to
+Apple directly and need the APNs key from the developer account here.
 
   baran push send "Title" "Body"    send to every registered phone
   baran push notify "Title" "Body"  same, but silent while the Mac is in use
   baran push claude-hook            notify, fed by a Claude Code hook on stdin
   baran push codex-hook             the same for a Codex hook (Stop, PermissionRequest)
 
-Config, ~/.config/baran/apns.json:
-  {"team_id": "ABCDE12345", "key_id": "XYZ987ABCD", "key_path": "~/.config/baran/AuthKey_XYZ987ABCD.p8"}
 Phones, ~/.config/baran/devices.json: written by the app over SSH.
-Without either file the script does nothing and exits 0, so a hook never
-breaks the agent.
+Only for direct sending, ~/.config/baran/apns.json:
+  {"team_id": "ABCDE12345", "key_id": "XYZ987ABCD", "key_path": "~/.config/baran/AuthKey_XYZ987ABCD.p8"}
+Without phones the script does nothing and exits 0, so a hook never breaks
+the agent.
 """
 import base64
 import json
@@ -67,10 +70,28 @@ def provider_token(config):
     return jwt
 
 
+def send_relayed(device, title, body):
+    """(sent, gone): seals the text with the phone's key and hands it to the relay."""
+    import seal
+    key = base64.b64decode(device["key"])
+    box = seal.seal(key, json.dumps({"t": title, "b": body[:300]}, ensure_ascii=False).encode())
+    request = json.dumps({"sealed": base64.b64encode(box).decode()})
+    result = subprocess.run(
+        ["curl", "-sS", "--max-time", "15", "-o", "-", "-w", "\n%{http_code}",
+         "-H", "content-type: application/json",
+         "-H", f"authorization: Bearer {device['id']}.{device['secret']}",
+         "--data-binary", "@-", device["relay"].rstrip("/") + "/v1/push"],
+        input=request, capture_output=True, text=True)
+    reply, _, status = result.stdout.rpartition("\n")
+    if status == "200":
+        return True, False
+    print(f"{device.get('name', 'phone')}: relay {status} {reply.strip() or result.stderr.strip()}", file=sys.stderr)
+    return False, status == "404"
+
+
 def send(title, body, only_always=False):
     """`only_always`: just the phones that asked to hear even while the Mac is in use."""
     try:
-        config = json.load(open(os.path.join(BASE, "apns.json")))
         devices = json.load(open(os.path.join(BASE, "devices.json")))
     except (OSError, ValueError):
         return 0
@@ -78,10 +99,20 @@ def send(title, body, only_always=False):
         devices = [d for d in devices if d.get("always")]
     if not devices:
         return 0
-    jwt = provider_token(config)
-    payload = json.dumps({"aps": {"alert": {"title": title, "body": body[:300]}, "sound": "default"}})
     gone, failed = [], 0
-    for device in devices:
+    for device in [d for d in devices if d.get("relay")]:
+        sent, lost = send_relayed(device, title, body)
+        failed += not sent
+        if lost:
+            gone.append(device["id"])
+    direct = [d for d in devices if d.get("token") and not d.get("relay")]
+    try:
+        config = json.load(open(os.path.join(BASE, "apns.json"))) if direct else None
+    except (OSError, ValueError):
+        config, direct = None, []
+    jwt = provider_token(config) if direct else None
+    payload = json.dumps({"aps": {"alert": {"title": title, "body": body[:300]}, "sound": "default"}})
+    for device in direct:
         host = "api.sandbox.push.apple.com" if device.get("env") == "sandbox" else "api.push.apple.com"
         result = subprocess.run(
             ["curl", "-sS", "--http2", "--max-time", "10", "-o", "-", "-w", "\n%{http_code}",
@@ -101,7 +132,8 @@ def send(title, body, only_always=False):
         # Re-read: the filter above may have left phones out of `devices`.
         everyone = json.load(open(os.path.join(BASE, "devices.json")))
         with open(os.path.join(BASE, "devices.json"), "w") as out:
-            json.dump([d for d in everyone if d["token"] not in gone], out, indent=1)
+            json.dump([d for d in everyone if d.get("id") not in gone and d.get("token") not in gone],
+                      out, indent=1)
     return 1 if failed else 0
 
 
