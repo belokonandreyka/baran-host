@@ -5,7 +5,9 @@ agents (pi, Claude Code, Codex) on their own machines. It runs on the machine
 you connect to and does three things:
 
 - `baran pair` shows a QR code in the terminal; the app scans it and gets the
-  address, user, port and a freshly authorized SSH key.
+  address, user, port and a freshly authorized SSH key (`--text` prints the same
+  as one line to paste, for when the code cannot be scanned, e.g. `baran pair`
+  runs in Baran's own terminal on the phone).
 - `baran push` sends a push notification to your phone straight through Apple's
   push service (no server in between) when an agent is waiting for you.
 - `baran statusline` is a Claude Code status line that also records your plan
@@ -35,6 +37,7 @@ run it again to update. It needs curl, tar and python3.
 baran pair                    # new key for the phone + QR with everything
 baran pair --no-key           # address only; choose the key in the app
 baran pair --host 10.0.0.5 --port 2222 --name NAS
+baran pair --text             # one line to paste instead of the QR (+ → Paste code)
 ```
 
 By default this creates an ed25519 key, appends its public half to
@@ -108,7 +111,7 @@ connection → Host status).
 
 | File | Written by | Read by |
 |---|---|---|
-| QR payload: `{"herdr":1,"n":name,"h":host,"p":port,"u":user,"c":command,"k":key}` | `baran pair` | app |
+| QR payload: `{"herdr":1,"n":name,"h":host,"p":port,"u":user,"c":command,"s":ed25519 seed}`; with `--text`, `baran:` + its base64url | `baran pair` | app |
 | `~/.config/baran/devices.json` | app | `baran push` |
 | `~/.claude/usage-limits.json` | `baran statusline` | app |
 | `~/.claude/usage-scoped.json` | `baran statusline` | app |

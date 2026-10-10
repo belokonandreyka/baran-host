@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shows a QR code that adds this machine to the Baran iOS app.
+"""Shows a QR code (or --text line) that adds this machine to the Baran app.
 
 Run it on the machine you want to connect to, then in the app: + → Scan QR.
 
@@ -8,12 +8,17 @@ Run it on the machine you want to connect to, then in the app: + → Scan QR.
   baran pair --host 10.0.0.5  address the phone should use (default: this
                               machine's address on the local network)
   baran pair --port 2222 --name NAS --user me --command herdr
+  baran pair --text           one line to copy instead of the QR, when the code
+                              cannot be scanned: run on the phone itself (in
+                              Baran's terminal) or in a terminal too narrow for
+                              it (app: + → Paste code)
 
 By default it creates a fresh ed25519 key, appends its public half to
 ~/.ssh/authorized_keys (comment "baran <date>", so it is easy to find
 and remove) and puts the private half into the QR code only: it is never left
 on disk. Whoever photographs the code can log in as you, so show it only to
-your own phone; it is wiped from the screen when you press Enter.
+your own phone; it is wiped from the screen when you press Enter. The same
+goes for the --text line: it is the key too, so send it only to yourself.
 
 Needs nothing but Python 3 and ssh-keygen.
 """
@@ -302,7 +307,7 @@ def seed_of(private):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="QR code that adds this machine to the Baran iOS app.")
+    parser = argparse.ArgumentParser(description="QR code (or --text line) that adds this machine to the Baran app.")
     parser.add_argument("--host", default=None, help="address the phone connects to")
     parser.add_argument("--port", type=int, default=22)
     parser.add_argument("--user", default=getpass.getuser())
@@ -310,6 +315,7 @@ def main():
     parser.add_argument("--command", default="herdr" if shutil.which("herdr") else "",
                         help="typed after login (default: herdr when it is installed)")
     parser.add_argument("--no-key", action="store_true", help="leave the key out; choose one in the app")
+    parser.add_argument("--text", action="store_true", help="print the code as one line to paste, not as a QR")
     parser.add_argument("--authorized-keys", default=os.path.expanduser("~/.ssh/authorized_keys"),
                         help=argparse.SUPPRESS)
     options = parser.parse_args()
@@ -319,13 +325,16 @@ def main():
     comment = None
     if not options.no_key:
         code["s"], comment = new_key(options.authorized_keys)
-    matrix = qr_matrix(json.dumps(code, separators=(",", ":"), ensure_ascii=False).encode())
+    payload = json.dumps(code, separators=(",", ":"), ensure_ascii=False).encode()
+    if options.text:
+        return show_text(code, payload, comment, options.authorized_keys)
+    matrix = qr_matrix(payload)
 
     width = len(matrix) + 4
     columns = shutil.get_terminal_size().columns
     if columns < width:
         print(f"The terminal is {columns} columns wide and the code needs {width}: widen the window "
-              "or shrink the font, then run this again.", file=sys.stderr)
+              "or shrink the font, then run this again, or use --text.", file=sys.stderr)
         if comment:
             print(f"A key was already added to {options.authorized_keys} ({comment}); "
                   "remove that line if you do not rerun.", file=sys.stderr)
@@ -335,11 +344,30 @@ def main():
     if comment:
         print(f"New key authorized in {options.authorized_keys} as \"{comment}\".")
         print("The code holds its private half: show it to your own phone only.")
-    print("In the Baran app: + → Scan QR.")
+    print("In the Baran app: + → Scan QR. Cannot scan it? `baran pair --text`.")
+    wipe()
+    return 0
+
+
+def show_text(code, payload, comment, authorized_keys):
+    """`baran:` + base64url: no quotes or spaces for a chat or notes app to curl."""
+    print(TEXT_PREFIX + base64.urlsafe_b64encode(payload).decode().rstrip("="))
+    print(f"\n{code['n']}: {code['u']}@{code['h']}:{code['p']}" + (f", then `{code['c']}`" if code["c"] else ""))
+    if comment:
+        print(f"New key authorized in {authorized_keys} as \"{comment}\".")
+        print("The line holds its private half: copy it to your own phone only.")
+    print("In the Baran app: + → Paste code.")
+    wipe()
+    return 0
+
+
+TEXT_PREFIX = "baran:"
+
+
+def wipe():
     if sys.stdin.isatty():
         input("Press Enter to wipe the code from the screen. ")
         sys.stdout.write("\033[2J\033[3J\033[H")
-    return 0
 
 
 if __name__ == "__main__":
