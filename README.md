@@ -117,6 +117,15 @@ tools, herdr, SFTP), its version against the newest one, and the agent hooks.
 another status line is left alone. The app runs both over SSH (long-press a
 connection → Host status).
 
+## Attaching from the app
+
+The app opens a herdr session with `baran attach SESSION`. On a Mac reached
+over SSH that matters: a herdr server started from the SSH shell lives in a
+Background session, and Keychain reads in its panes fail (Claude Code says
+"Not logged in", token helpers return nothing). When the session's server is
+not running yet, `baran attach` starts it as a launchd job in the GUI session
+first, then attaches. On Linux it is plain `herdr --session SESSION`.
+
 ## Files the app and the host share
 
 | File | Written by | Read by |

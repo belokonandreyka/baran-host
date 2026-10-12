@@ -10,6 +10,8 @@
   baran doctor [--json]          what works on this host, versions, integrations
   baran integrate claude|codex|hermes|pi  set up (or --remove) the agent hooks
   baran fix herdr                one-tap fixes the app offers
+  baran attach [SESSION]         attach to a herdr session; on a Mac over SSH its
+                                 server is started in the GUI session (Keychain)
   baran --version
 
 `baran <command> --help` shows the options of a command.
@@ -18,10 +20,10 @@ import os
 import shutil
 import sys
 
-VERSION = "0.3.8"
+VERSION = "0.3.9"
 HERE = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "libexec")
 COMMANDS = {"pair": "pair.py", "push": "push.py", "statusline": "claude-statusline.py",
-            "doctor": "doctor.py", "integrate": "doctor.py", "fix": "doctor.py"}
+            "doctor": "doctor.py", "integrate": "doctor.py", "fix": "doctor.py", "attach": "attach.py"}
 
 
 def main():
