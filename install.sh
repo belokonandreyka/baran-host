@@ -18,6 +18,15 @@ rm -rf "$DEST"
 mkdir -p "$(dirname "$DEST")" "$BIN"
 mv "$tmp"/baran-host-* "$DEST"
 ln -sf "$DEST/bin/baran" "$BIN/baran"
+# ~/.local/bin is rarely on a Mac's PATH; Homebrew's bin is. Link there too when
+# it is on the PATH, writable, and holds nothing else (a brew-installed baran stays).
+for extra in ${BARAN_EXTRA_BINS:-/opt/homebrew/bin /usr/local/bin}; do
+    case ":$PATH:" in *":$extra:"*) ;; *) continue ;; esac
+    [ -d "$extra" ] && [ -w "$extra" ] || continue
+    if [ ! -e "$extra/baran" ] || [ "$(readlink "$extra/baran" 2>/dev/null)" = "$DEST/bin/baran" ]; then
+        ln -sf "$DEST/bin/baran" "$extra/baran" && BIN="$extra"
+    fi
+done
 
 echo "Installed $("$BIN/baran" --version) in $DEST"
 case ":$PATH:" in

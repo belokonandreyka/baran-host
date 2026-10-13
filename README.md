@@ -21,17 +21,16 @@ Needs Python 3 and nothing else. macOS and Linux.
 ## Install
 
 ```sh
-brew install belokonandreyka/baran/baran
-```
-
-Without Homebrew (Linux, a NAS):
-
-```sh
 curl -fsSL https://baran.party/install.sh | sh
 ```
 
-That unpacks the tools into `~/.local/share/baran` and links `~/.local/bin/baran`;
-run it again to update. It needs curl, tar and python3.
+That unpacks the tools into `~/.local/share/baran` and links `~/.local/bin/baran`
+(on a Mac also into the Homebrew bin, so `baran` is on the PATH at once); run it
+again to update. It needs curl, tar and python3. With Homebrew instead:
+
+```sh
+brew install belokonandreyka/baran/baran
+```
 
 ## Pair a machine
 
