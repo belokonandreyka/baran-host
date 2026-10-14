@@ -256,16 +256,73 @@ def render(matrix, quiet=2):
 # --- Pairing
 
 
+# Addresses a phone on the same network cannot reach: VPN/proxy tunnels
+# (Clash, sing-box, Surge put a fake gateway in 198.18.0.0/15), link-local,
+# loopback. CGNAT 100.64/10 is Tailscale's; it works only with Tailscale on
+# the phone too, so it comes after a LAN address.
+def _rank(name, address):
+    """Lower is better; None when the phone cannot use it."""
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return None
+    if ip.is_loopback or ip.is_link_local or ip in ipaddress.ip_network("198.18.0.0/15"):
+        return None
+    tunnel = name.startswith(("utun", "tun", "tap", "wg", "ppp", "ipsec", "gif", "stf", "bridge", "docker", "veth", "br-"))
+    if ip in ipaddress.ip_network("100.64.0.0/10"):
+        return 2
+    if tunnel:
+        return None
+    if ip.is_private:
+        return 0
+    return 1
+
+
+def interface_addresses():
+    """(interface, IPv4 address) pairs, from ifconfig or ip."""
+    pairs = []
+    for command in (["ifconfig"], ["ip", "-4", "-o", "addr", "show"]):
+        try:
+            output = subprocess.run(command, capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        name = None
+        for line in output.splitlines():
+            words = line.split()
+            if not words:
+                continue
+            if command[0] == "ip":
+                # "2: eth0    inet 192.168.1.5/24 brd ..."
+                if "inet" in words:
+                    pairs.append((words[1], words[words.index("inet") + 1].split("/")[0]))
+                continue
+            if not line[0].isspace():
+                name = words[0].rstrip(":")
+            elif words[0] == "inet" and name:
+                pairs.append((name, words[1].split("/")[0]))
+        if pairs:
+            break
+    return pairs
+
+
 def local_address():
     """The address other devices on the network reach this machine at."""
+    candidates = [(rank, i, address) for i, (name, address) in enumerate(interface_addresses())
+                  if (rank := _rank(name, address)) is not None]
+    if candidates:
+        return min(candidates)[2]
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         probe.connect(("192.0.2.1", 9))  # picks the outgoing interface; sends nothing
-        return probe.getsockname()[0]
+        address = probe.getsockname()[0]
+        if _rank("", address) is not None:
+            return address
     except OSError:
-        return socket.gethostname()
+        pass
     finally:
         probe.close()
+    return socket.gethostname()
 
 
 def new_key(authorized_keys):
