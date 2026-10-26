@@ -66,6 +66,8 @@ Without phones it does nothing and exits 0, so a hook never breaks an agent.
 
 ```sh
 baran push send "Title" "Body"      # always
+baran push send --kind ask "Title" "Body"  # a question or permission the agent waits on:
+                                    # newer apps let it through Focus with its own sound
 baran push notify "Title" "Body"    # silent while this Mac's keyboard or mouse is in use,
                                     # except for phones set to "even when I'm at the Mac"
 ```

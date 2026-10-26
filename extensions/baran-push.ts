@@ -1,6 +1,7 @@
 // Pushes the opening words of pi's reply to the Baran iOS app when an
-// interactive pi session finishes a turn. Sending is done by `baran push`,
-// which does nothing when no phone or APNs key is set up.
+// interactive pi session finishes a turn, and a question at once when pi
+// stops to ask one (the ask_user dialog announces itself as `herdr:blocked`).
+// Sending is done by `baran push`, which does nothing when no phone is set up.
 //
 // Install: copy to ~/.pi/agent/extensions/baran-push.ts
 import { spawn } from "node:child_process";
@@ -27,26 +28,36 @@ function lastReply(ctx): string {
   return "";
 }
 
+function push(args: string[]) {
+  if (!baran) return;
+  try {
+    const child = spawn(baran, ["push", ...args], { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    child.unref();
+  } catch {}
+}
+
 export default function (pi) {
   // TUI only: print/RPC/JSON runs are scripts and subagents nobody waits on.
   let interactive = false;
+  let folder = "pi";
+
+  // A question waits for an answer, so it goes out even while the Mac is in use.
+  pi.events?.on?.("herdr:blocked", (data) => {
+    if (!interactive || !data?.active) return;
+    const header = typeof data.label === "string" && data.label.trim() ? data.label.trim() : "";
+    push(["send", "--kind", "ask", `pi · ${folder}`, header ? `Питає: ${header}` : "Має до вас питання."]);
+  });
 
   pi.on("session_start", (_event, ctx) => {
     interactive = ctx?.mode === "tui";
+    folder = basename(ctx?.cwd ?? process.cwd()) || "pi";
   });
 
   pi.on("agent_settled", (_event, ctx) => {
     if (!interactive || ctx?.isIdle?.() !== true || !baran) {
       return;
     }
-    const folder = basename(ctx?.cwd ?? process.cwd()) || "pi";
-    try {
-      const child = spawn(baran, ["push", "notify", `pi · ${folder}`, lastReply(ctx) || "Закінчив і чекає на вас."], {
-        detached: true,
-        stdio: "ignore",
-      });
-      child.on("error", () => {});
-      child.unref();
-    } catch {}
+    push(["notify", `pi · ${folder}`, lastReply(ctx) || "Закінчив і чекає на вас."]);
   });
 }

@@ -9,6 +9,8 @@ Apple directly and need the APNs key from the developer account here.
 
   baran push send "Title" "Body"    send to every registered phone
   baran push notify "Title" "Body"  same, but silent while the Mac is in use
+  baran push send --kind ask ...    an agent waits on a question or a permission:
+                                    the app lets it through Focus with its own sound
   baran push claude-hook            notify, fed by a Claude Code hook on stdin
   baran push codex-hook             the same for a Codex hook (Stop, PermissionRequest)
 
@@ -70,11 +72,28 @@ def provider_token(config):
     return jwt
 
 
-def send_relayed(device, title, body):
+def sealed_message(title, body, kind=None):
+    """What goes in the box: the relay never sees the kind either, and older
+    apps skip the key they do not know."""
+    message = {"t": title, "b": body[:300]}
+    if kind:
+        message["k"] = kind
+    return json.dumps(message, ensure_ascii=False)
+
+
+def direct_payload(title, body, kind=None):
+    """For phones on the old raw-token path, which have no box to read."""
+    aps = {"alert": {"title": title, "body": body[:300]}, "sound": "default"}
+    if kind == "ask":
+        aps["interruption-level"] = "time-sensitive"
+    return json.dumps({"aps": aps}, ensure_ascii=False)
+
+
+def send_relayed(device, title, body, kind=None):
     """(sent, gone): seals the text with the phone's key and hands it to the relay."""
     import seal
     key = base64.b64decode(device["key"])
-    box = seal.seal(key, json.dumps({"t": title, "b": body[:300]}, ensure_ascii=False).encode())
+    box = seal.seal(key, sealed_message(title, body, kind).encode())
     request = json.dumps({"sealed": base64.b64encode(box).decode()})
     result = subprocess.run(
         ["curl", "-sS", "--max-time", "15", "-o", "-", "-w", "\n%{http_code}",
@@ -89,8 +108,9 @@ def send_relayed(device, title, body):
     return False, status == "404"
 
 
-def send(title, body, only_always=False):
-    """`only_always`: just the phones that asked to hear even while the Mac is in use."""
+def send(title, body, only_always=False, kind=None):
+    """`only_always`: just the phones that asked to hear even while the Mac is in use.
+    `kind` "ask": the agent waits for an answer, not just finished."""
     try:
         devices = json.load(open(os.path.join(BASE, "devices.json")))
     except (OSError, ValueError):
@@ -101,7 +121,7 @@ def send(title, body, only_always=False):
         return 0
     gone, failed = [], 0
     for device in [d for d in devices if d.get("relay")]:
-        sent, lost = send_relayed(device, title, body)
+        sent, lost = send_relayed(device, title, body, kind)
         failed += not sent
         if lost:
             gone.append(device["id"])
@@ -111,7 +131,7 @@ def send(title, body, only_always=False):
     except (OSError, ValueError):
         config, direct = None, []
     jwt = provider_token(config) if direct else None
-    payload = json.dumps({"aps": {"alert": {"title": title, "body": body[:300]}, "sound": "default"}})
+    payload = direct_payload(title, body, kind)
     for device in direct:
         host = "api.sandbox.push.apple.com" if device.get("env") == "sandbox" else "api.push.apple.com"
         result = subprocess.run(
@@ -147,8 +167,8 @@ def at_the_mac():
     return idle / 1e9 < AWAY_AFTER
 
 
-def notify(title, body):
-    return send(title, body, only_always=at_the_mac())
+def notify(title, body, kind=None):
+    return send(title, body, only_always=at_the_mac(), kind=kind)
 
 
 def excerpt(text, limit=160):
@@ -199,13 +219,13 @@ def claude_hook():
     if name == "PermissionRequest":
         what = tool.get("command") or tool.get("file_path") or tool.get("url") or ""
         detail = excerpt(f"{event.get('tool_name') or ''} {what}".strip(), 120)
-        return send(title, "Потрібен дозвіл" + (f": {detail}" if detail else ""))
+        return send(title, "Потрібен дозвіл" + (f": {detail}" if detail else ""), kind="ask")
     if name == "PreToolUse" and event.get("tool_name") == "AskUserQuestion":
         questions = tool.get("questions") or []
         asked = questions[0].get("question") if questions and isinstance(questions[0], dict) else ""
-        return send(title, "Питає: " + excerpt(asked) if asked else "Має до вас питання.")
+        return send(title, "Питає: " + excerpt(asked) if asked else "Має до вас питання.", kind="ask")
     if name == "PreToolUse" and event.get("tool_name") == "ExitPlanMode":
-        return send(title, "План готовий і чекає на схвалення.")
+        return send(title, "План готовий і чекає на схвалення.", kind="ask")
     return notify(title, event.get("message") or "Потрібна ваша відповідь.")
 
 
@@ -227,15 +247,23 @@ def codex_hook():
         if isinstance(what, list):
             what = " ".join(map(str, what))
         detail = excerpt(f"{event.get('tool_name') or ''} {what or ''}".strip(), 120)
-        return notify(f"Codex · {folder}", "Потрібен дозвіл" + (f": {detail}" if detail else ""))
+        return notify(f"Codex · {folder}", "Потрібен дозвіл" + (f": {detail}" if detail else ""), kind="ask")
     return 0
 
 
+def split_kind(args):
+    """(kind, the rest) for `send|notify [--kind KIND] TITLE BODY`."""
+    if len(args) >= 2 and args[0] == "--kind":
+        return args[1], args[2:]
+    return None, args
+
+
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["send"] and len(sys.argv) == 4:
-        sys.exit(send(sys.argv[2], sys.argv[3]))
-    if sys.argv[1:2] == ["notify"] and len(sys.argv) == 4:
-        sys.exit(notify(sys.argv[2], excerpt(sys.argv[3])))
+    kind, rest = split_kind(sys.argv[2:])
+    if sys.argv[1:2] == ["send"] and len(rest) == 2:
+        sys.exit(send(rest[0], rest[1], kind=kind))
+    if sys.argv[1:2] == ["notify"] and len(rest) == 2:
+        sys.exit(notify(rest[0], excerpt(rest[1]), kind=kind))
     if sys.argv[1:2] == ["claude-hook"]:
         sys.exit(claude_hook())
     if sys.argv[1:2] == ["codex-hook"]:
