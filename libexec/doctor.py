@@ -145,12 +145,13 @@ def claude_state():
 
     ours = [c for event in hooks for c in commands(event) if "baran push claude-hook" in c]
     line = (settings.get("statusLine") or {}).get("command", "")
+    wraps_ours = calls_baran_statusline(line)
     placed = sorted(event for event in hooks if any("baran push claude-hook" in c for c in commands(event)))
     hooks_current = placed == sorted(e for e, _ in CLAUDE_EVENTS) and len(ours) == len(CLAUDE_EVENTS) \
         and all(c == f"{path} push claude-hook" for c in ours)
     if not ours and "baran statusline" not in line:
         state = "missing"
-    elif hooks_current and line == f"{path} statusline":
+    elif hooks_current and (line == f"{path} statusline" or wraps_ours):
         state = "installed"
     elif hooks_current and "baran statusline" not in line:
         # Pushes work; another status line is kept, so limits do not refresh.
@@ -158,6 +159,19 @@ def claude_state():
     else:
         state = "outdated"
     return {"id": "claude", "name": "Claude Code", "present": present, "state": state}
+
+
+def calls_baran_statusline(command):
+    """A status line of one's own that still feeds the limits: a script
+    that runs `baran statusline` inside (its output may be thrown away)."""
+    if not command or "baran statusline" in command:
+        return False
+    try:
+        path = os.path.expanduser(command.strip().split()[0].strip("'\""))
+        with open(path, encoding="utf-8", errors="replace") as script:
+            return "baran statusline" in script.read(200_000)
+    except (OSError, IndexError):
+        return False
 
 
 def codex_hooks_enabled():
