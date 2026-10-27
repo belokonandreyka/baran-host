@@ -72,12 +72,19 @@ def provider_token(config):
     return jwt
 
 
-def sealed_message(title, body, kind=None):
+def sealed_message(title, body, kind=None, host=None):
     """What goes in the box: the relay never sees the kind either, and older
-    apps skip the key they do not know."""
+    apps skip the keys they do not know. A question also says where it was
+    asked (the app's id of this host, the herdr pane and socket the hook runs
+    in), so the push's Allow / Deny buttons can answer it there."""
     message = {"t": title, "b": body[:300]}
     if kind:
         message["k"] = kind
+    pane = os.environ.get("HERDR_PANE_ID")
+    if kind == "ask" and host and pane:
+        message.update({"h": host, "p": pane})
+        if os.environ.get("HERDR_SOCKET_PATH"):
+            message["s"] = os.environ["HERDR_SOCKET_PATH"]
     return json.dumps(message, ensure_ascii=False)
 
 
@@ -93,7 +100,7 @@ def send_relayed(device, title, body, kind=None):
     """(sent, gone): seals the text with the phone's key and hands it to the relay."""
     import seal
     key = base64.b64decode(device["key"])
-    box = seal.seal(key, sealed_message(title, body, kind).encode())
+    box = seal.seal(key, sealed_message(title, body, kind, device.get("host")).encode())
     request = json.dumps({"sealed": base64.b64encode(box).decode()})
     result = subprocess.run(
         ["curl", "-sS", "--max-time", "15", "-o", "-", "-w", "\n%{http_code}",

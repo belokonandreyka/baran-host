@@ -15,6 +15,15 @@ class PushKindTest(unittest.TestCase):
         self.assertEqual(json.loads(push.sealed_message("T", "B")), {"t": "T", "b": "B"})
         self.assertEqual(json.loads(push.sealed_message("T", "B", "ask"))["k"], "ask")
 
+    def test_a_question_says_where_it_was_asked(self):
+        with mock.patch.dict(os.environ, {"HERDR_PANE_ID": "w1:p2", "HERDR_SOCKET_PATH": "/s.sock"}):
+            asked = json.loads(push.sealed_message("T", "B", "ask", "HOST-ID"))
+            done = json.loads(push.sealed_message("T", "B", None, "HOST-ID"))
+        self.assertEqual((asked["h"], asked["p"], asked["s"]), ("HOST-ID", "w1:p2", "/s.sock"))
+        self.assertNotIn("p", done)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertNotIn("p", json.loads(push.sealed_message("T", "B", "ask", "HOST-ID")))
+
     def test_direct_path_marks_questions_time_sensitive(self):
         self.assertNotIn("interruption-level", json.loads(push.direct_payload("T", "B"))["aps"])
         aps = json.loads(push.direct_payload("T", "B", "ask"))["aps"]
