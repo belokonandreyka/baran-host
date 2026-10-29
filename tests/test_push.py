@@ -33,11 +33,12 @@ class PushKindTest(unittest.TestCase):
         self.assertEqual(push.split_kind(["--kind", "ask", "T", "B"]), ("ask", ["T", "B"]))
         self.assertEqual(push.split_kind(["T", "B"]), (None, ["T", "B"]))
 
-    def hook(self, function, event):
-        calls = []
+    def hook(self, function, event, at_the_mac=False, calls=None):
+        calls = [] if calls is None else calls
         record = lambda *args, **kw: calls.append((function, args, kw)) or 0  # noqa: E731
-        with mock.patch.object(push, "send", side_effect=lambda t, b, only_always=False, kind=None: record(t, b, kind=kind)), \
-                mock.patch.object(push, "at_the_mac", return_value=False), \
+        with mock.patch.object(push, "send", side_effect=lambda t, b, only_always=False, kind=None:
+                                  record(t, b, kind=kind, only_always=only_always)), \
+                mock.patch.object(push, "at_the_mac", return_value=at_the_mac), \
                 mock.patch("sys.stdin", io.StringIO(json.dumps(event))):
             getattr(push, function)()
         return calls[0][2].get("kind")
@@ -50,6 +51,15 @@ class PushKindTest(unittest.TestCase):
         self.assertEqual(self.hook("codex_hook", {"hook_event_name": "PermissionRequest", "cwd": "/x"}), "ask")
         stop = {"hook_event_name": "Stop", "cwd": "/x", "last_assistant_message": "done"}
         self.assertIsNone(self.hook("claude_hook", stop))
+
+    def test_questions_are_not_silenced_at_the_mac(self):
+        for function in ("claude_hook", "codex_hook"):
+            calls = []
+            self.hook(function, {"hook_event_name": "PermissionRequest", "cwd": "/x"}, at_the_mac=True, calls=calls)
+            self.assertFalse(calls[0][2]["only_always"], function)
+        calls = []
+        self.hook("codex_hook", {"hook_event_name": "Stop", "cwd": "/x"}, at_the_mac=True, calls=calls)
+        self.assertTrue(calls[0][2]["only_always"])
 
 
 if __name__ == "__main__":

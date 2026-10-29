@@ -254,7 +254,8 @@ def codex_hook():
         if isinstance(what, list):
             what = " ".join(map(str, what))
         detail = excerpt(f"{event.get('tool_name') or ''} {what or ''}".strip(), 120)
-        return notify(f"Codex · {folder}", "Потрібен дозвіл" + (f": {detail}" if detail else ""), kind="ask")
+        # It waits for an answer, so it goes out even while the Mac is in use (as Claude's does).
+        return send(f"Codex · {folder}", "Потрібен дозвіл" + (f": {detail}" if detail else ""), kind="ask")
     return 0
 
 
