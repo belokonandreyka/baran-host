@@ -20,7 +20,7 @@ class PushKindTest(unittest.TestCase):
             asked = json.loads(push.sealed_message("T", "B", "ask", "HOST-ID"))
             done = json.loads(push.sealed_message("T", "B", None, "HOST-ID"))
         self.assertEqual((asked["h"], asked["p"], asked["s"]), ("HOST-ID", "w1:p2", "/s.sock"))
-        self.assertNotIn("p", done)
+        self.assertEqual((done["h"], done["p"], done["s"]), ("HOST-ID", "w1:p2", "/s.sock"))
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertNotIn("p", json.loads(push.sealed_message("T", "B", "ask", "HOST-ID")))
 

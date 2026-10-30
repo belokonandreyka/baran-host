@@ -74,14 +74,15 @@ def provider_token(config):
 
 def sealed_message(title, body, kind=None, host=None):
     """What goes in the box: the relay never sees the kind either, and older
-    apps skip the keys they do not know. A question also says where it was
-    asked (the app's id of this host, the herdr pane and socket the hook runs
-    in), so the push's Allow / Deny buttons can answer it there."""
+    apps skip the keys they do not know. Every push says where it came from
+    (the app's id of this host, the herdr pane and socket the hook runs in):
+    a tap opens that pane in its session, and a question's Allow / Deny
+    buttons answer it there."""
     message = {"t": title, "b": body[:300]}
     if kind:
         message["k"] = kind
     pane = os.environ.get("HERDR_PANE_ID")
-    if kind == "ask" and host and pane:
+    if host and pane:
         message.update({"h": host, "p": pane})
         if os.environ.get("HERDR_SOCKET_PATH"):
             message["s"] = os.environ["HERDR_SOCKET_PATH"]
