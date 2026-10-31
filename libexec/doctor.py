@@ -16,6 +16,8 @@ import subprocess
 import sys
 import urllib.request
 
+import settings
+
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BASE = os.path.expanduser("~/.config/baran")
 CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
@@ -395,6 +397,7 @@ def report():
         "update_command": update_command(),
         "checks": checks(),
         "integrations": [claude_state(), codex_state(), hermes_state(), pi_state()],
+        "settings": settings.load(),
     }
 
 

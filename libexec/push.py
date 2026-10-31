@@ -23,9 +23,12 @@ the agent.
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+
+import settings
 
 BASE = os.path.expanduser("~/.config/baran")
 TOKEN_LIFETIME = 40 * 60  # Apple rejects tokens older than 1 h and ones renewed too often.
@@ -116,9 +119,52 @@ def send_relayed(device, title, body, kind=None):
     return False, status == "404"
 
 
+# An agent's own process, by its command line: `claude`, `codex`, `pi`,
+# `hermes`, or node/python running one of them.
+AGENT = re.compile(r"(^|[\s/])(claude|codex|pi|hermes)(\s|$)")
+
+
+def ancestors(pid=None):
+    """Command lines from the parent process up to init."""
+    lines, pid = [], pid or os.getppid()
+    for _ in range(40):
+        if pid <= 1:
+            break
+        result = subprocess.run(["ps", "-o", "ppid=", "-o", "args=", "-p", str(pid)],
+                                capture_output=True, text=True)
+        parent, _, args = result.stdout.strip().partition(" ")
+        if result.returncode != 0 or not parent.isdigit():
+            break
+        lines.append(args.strip())
+        pid = int(parent)
+    return lines
+
+
+def nested(lines=None):
+    """True for an agent that another agent started: pi's collaborating
+    subagents say so; for the rest, two agents in the process ancestry."""
+    if int(os.environ.get("PI_COLLAB_SUBAGENT_DEPTH") or 0) > 0:
+        return True
+    lines = ancestors() if lines is None else lines
+    return sum(1 for line in lines if AGENT.search(line)) >= 2
+
+
+def quiet(kind):
+    """The host settings hold back pushes that only say an agent finished;
+    questions and permission requests always go out."""
+    if kind == "ask":
+        return False
+    values = settings.load()
+    if values["quiet_outside_herdr"] and not os.environ.get("HERDR_PANE_ID"):
+        return True
+    return values["quiet_subagents"] and nested()
+
+
 def send(title, body, only_always=False, kind=None):
     """`only_always`: just the phones that asked to hear even while the Mac is in use.
     `kind` "ask": the agent waits for an answer, not just finished."""
+    if quiet(kind):
+        return 0
     try:
         devices = json.load(open(os.path.join(BASE, "devices.json")))
     except (OSError, ValueError):
