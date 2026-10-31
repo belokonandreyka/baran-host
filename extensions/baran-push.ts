@@ -37,11 +37,6 @@ function push(args: string[]) {
   } catch {}
 }
 
-// A subagent an orchestrator started (pi-collaborating-agents sets the depth):
-// the orchestrator reads its result, so its finished turns are not news. Six
-// of them finishing would be six pushes. Its questions still go out.
-const subagent = Number(process.env.PI_COLLAB_SUBAGENT_DEPTH ?? "0") > 0;
-
 export default function (pi) {
   // TUI only: print/RPC/JSON runs are scripts and subagents nobody waits on.
   let interactive = false;
@@ -60,7 +55,10 @@ export default function (pi) {
   });
 
   pi.on("agent_settled", (_event, ctx) => {
-    if (!interactive || subagent || ctx?.isIdle?.() !== true || !baran) {
+    // A subagent's finished turn (pi-collaborating-agents sets
+    // PI_COLLAB_SUBAGENT_DEPTH) is held back by `baran push` itself while the
+    // host's quiet_subagents setting is on; its questions still go out.
+    if (!interactive || ctx?.isIdle?.() !== true || !baran) {
       return;
     }
     push(["notify", `pi · ${folder}`, lastReply(ctx) || "Закінчив і чекає на вас."]);
