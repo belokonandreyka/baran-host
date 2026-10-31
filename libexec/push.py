@@ -171,6 +171,9 @@ def send(title, body, only_always=False, kind=None):
         return 0
     if only_always:
         devices = [d for d in devices if d.get("always")]
+    if kind != "ask":
+        # Phones that want only questions and permission requests.
+        devices = [d for d in devices if not d.get("asks_only")]
     if not devices:
         return 0
     gone, failed = [], 0

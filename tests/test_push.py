@@ -62,5 +62,18 @@ class PushKindTest(unittest.TestCase):
         self.assertTrue(calls[0][2]["only_always"])
 
 
+class AsksOnlyTest(unittest.TestCase):
+    def test_a_phone_that_wants_only_questions_gets_no_done_push(self):
+        devices = [{"relay": "r", "id": "all"}, {"relay": "r", "id": "asks", "asks_only": True}]
+        for kind, expected in ((None, ["all"]), ("ask", ["all", "asks"])):
+            sent = []
+            with mock.patch.object(push, "quiet", return_value=False), \
+                    mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(devices))), \
+                    mock.patch.object(push, "send_relayed",
+                                      side_effect=lambda d, *a: sent.append(d["id"]) or (True, False)):
+                push.send("T", "B", kind=kind)
+            self.assertEqual(sent, expected, kind)
+
+
 if __name__ == "__main__":
     unittest.main()
