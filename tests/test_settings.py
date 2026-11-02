@@ -68,6 +68,7 @@ class QuietTest(HostDir):
         settings.save(dict(settings.DEFAULTS, quiet_outside_herdr=True))
         self.assertTrue(self.quiet(lines=["claude"]))
         self.assertFalse(self.quiet(env={"HERDR_PANE_ID": "w1:p1"}, lines=["claude"]))
+        self.assertFalse(self.quiet(env={"HC_TERMINAL_ID": "t7"}, lines=["claude"]))
         self.assertFalse(self.quiet("ask", lines=["claude"]))
 
     def test_a_quiet_push_reaches_no_phone(self):

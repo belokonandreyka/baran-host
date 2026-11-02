@@ -117,9 +117,14 @@ def checks():
           "python3, openssl і curl з HTTP/2" if not tools and http2
           else "Бракує: " + ", ".join(tools + ([] if http2 else ["curl з HTTP/2"])))
 
-    herdr = shutil.which("herdr") or next((p for p in (os.path.expanduser("~/.local/bin/herdr"), "/opt/homebrew/bin/herdr")
+    def tool(name):
+        return shutil.which(name) or next((p for p in (os.path.expanduser("~/.local/bin/" + name), "/opt/homebrew/bin/" + name)
                                           if os.path.exists(p)), None)
-    check("herdr", "herdr", herdr, "Сесії, сайдбар і чат" if herdr else "Не встановлено: лише звичайний термінал",
+    herdr, hc = tool("herdr"), tool("hc")
+    # herdr-core (hc) serves the app the same way: sessions, sidebar and chat.
+    check("herdr", "herdr", herdr or hc,
+          "Сесії, сайдбар і чат; herdr-core теж" if herdr and hc else "Сесії, сайдбар і чат" if herdr
+          else "herdr-core: термінали, сайдбар і чат" if hc else "Не встановлено: лише звичайний термінал",
           fix="herdr")
 
     sftp = False

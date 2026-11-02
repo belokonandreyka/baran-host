@@ -85,9 +85,13 @@ def sealed_message(title, body, kind=None, host=None):
     if kind:
         message["k"] = kind
     pane = os.environ.get("HERDR_PANE_ID")
-    if host and pane:
-        message.update({"h": host, "p": pane})
-        if os.environ.get("HERDR_SOCKET_PATH"):
+    # A herdr-core terminal: its address, and "hc" where the socket goes.
+    core = None if pane else os.environ.get("HC_TERMINAL_ID")
+    if host and (pane or core):
+        message.update({"h": host, "p": pane or core})
+        if core:
+            message["s"] = "hc"
+        elif os.environ.get("HERDR_SOCKET_PATH"):
             message["s"] = os.environ["HERDR_SOCKET_PATH"]
     return json.dumps(message, ensure_ascii=False)
 
@@ -155,7 +159,8 @@ def quiet(kind):
     if kind == "ask":
         return False
     values = settings.load()
-    if values["quiet_outside_herdr"] and not os.environ.get("HERDR_PANE_ID"):
+    inside = os.environ.get("HERDR_PANE_ID") or os.environ.get("HC_TERMINAL_ID")
+    if values["quiet_outside_herdr"] and not inside:
         return True
     return values["quiet_subagents"] and nested()
 

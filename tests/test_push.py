@@ -23,6 +23,12 @@ class PushKindTest(unittest.TestCase):
         self.assertEqual((done["h"], done["p"], done["s"]), ("HOST-ID", "w1:p2", "/s.sock"))
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertNotIn("p", json.loads(push.sealed_message("T", "B", "ask", "HOST-ID")))
+        # Inside a herdr-core terminal: its address, and "hc" in place of a socket.
+        with mock.patch.dict(os.environ, {"HC_TERMINAL_ID": "t7"}, clear=True):
+            core = json.loads(push.sealed_message("T", "B", "ask", "HOST-ID"))
+        self.assertEqual((core["h"], core["p"], core["s"]), ("HOST-ID", "t7", "hc"))
+        with mock.patch.dict(os.environ, {"HC_TERMINAL_ID": "t7", "HERDR_PANE_ID": "w1:p2"}, clear=True):
+            self.assertEqual(json.loads(push.sealed_message("T", "B", "ask", "HOST-ID"))["p"], "w1:p2")
 
     def test_direct_path_marks_questions_time_sensitive(self):
         self.assertNotIn("interruption-level", json.loads(push.direct_payload("T", "B"))["aps"])

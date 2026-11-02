@@ -5,7 +5,7 @@
   baran settings set NAME on|off    change one
 
   quiet_subagents      no "finished" pushes from agents another agent started
-  quiet_outside_herdr  no "finished" pushes from agents outside a herdr pane
+  quiet_outside_herdr  no "finished" pushes from agents outside a herdr or hc terminal
   git_fetch            fetch upstream in the folders the app looks at, at most every 5 min
 
 Questions and permission requests always go out.
