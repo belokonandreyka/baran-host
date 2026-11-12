@@ -118,6 +118,16 @@ tools, herdr, SFTP), its version against the newest one, and the agent hooks.
 another status line is left alone. The app runs both over SSH (long-press a
 connection → Host status).
 
+## Server view
+
+`baran stats --json` reports CPU (each core over a quarter second), memory,
+swap, network counters, disk, uptime and your user's busiest programs, one
+line per program name. `baran ports --json` lists the TCP ports your
+processes listen on, whether each answers HTTP and its page title. The app's
+Usage sheet reads both every 2 seconds while its Servers tab is open; a dev
+server that listens on 0.0.0.0 opens on the phone by the host's address.
+See [CHANGELOG.md](CHANGELOG.md) for what each version brought.
+
 ## Attaching from the app
 
 The app opens a herdr session with `baran attach SESSION`. On a Mac reached
