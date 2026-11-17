@@ -3,6 +3,10 @@
 The Baran app shows the entries newer than the installed version next to its
 update button. One version per `## ` heading, one change per `- ` line.
 
+## 0.3.19
+
+- `baran pair` on a Mac puts its Bonjour name (`Name.local`) into the code, so the saved host survives a new address from the router
+
 ## 0.3.18
 
 - `baran stats`: CPU, memory, network, disk and the busiest processes, for the app's server view

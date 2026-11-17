@@ -58,5 +58,27 @@ class LocalAddressTest(unittest.TestCase):
             self.assertEqual(pair.local_address(), "100.101.102.103")
 
 
+class PairHostTest(unittest.TestCase):
+    def pair_host(self, outputs, platform="darwin"):
+        with mock.patch.object(pair.subprocess, "run", runner(outputs)), \
+                mock.patch.object(pair.sys, "platform", platform):
+            return pair.pair_host()
+
+    def test_a_mac_on_the_local_network_gives_its_bonjour_name(self):
+        outputs = {"ifconfig": MAC_WITH_PROXY, "scutil": "MacBook-Air-Denis\n"}
+        self.assertEqual(self.pair_host(outputs), "MacBook-Air-Denis.local")
+
+    def test_no_bonjour_name_keeps_the_address(self):
+        self.assertEqual(self.pair_host({"ifconfig": MAC_WITH_PROXY}), "192.168.1.23")
+        self.assertEqual(self.pair_host({"ifconfig": MAC_WITH_PROXY, "scutil": "\n"}), "192.168.1.23")
+
+    def test_linux_keeps_the_address(self):
+        self.assertEqual(self.pair_host({"ip": LINUX, "scutil": "box\n"}, platform="linux"), "10.0.0.5")
+
+    def test_tailscale_keeps_the_address(self):
+        only = "utun5: flags=8051<UP> mtu 1280\n\tinet 100.101.102.103 --> 100.101.102.103 netmask 0xffffffff\n"
+        self.assertEqual(self.pair_host({"ifconfig": only, "scutil": "MacBook-Air-Denis\n"}), "100.101.102.103")
+
+
 if __name__ == "__main__":
     unittest.main()

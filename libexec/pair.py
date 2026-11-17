@@ -325,6 +325,34 @@ def local_address():
     return socket.gethostname()
 
 
+def mdns_name():
+    """This Mac's Bonjour name, or None.
+
+    A router hands out a new address now and then and the saved host goes
+    dead; the name follows the machine. Only a Mac is sure to announce one.
+    """
+    if sys.platform != "darwin":
+        return None
+    try:
+        label = subprocess.run(["scutil", "--get", "LocalHostName"], capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return label + ".local" if label else None
+
+
+def pair_host():
+    """What goes into the code: the Bonjour name for an address on the local network, else the address."""
+    import ipaddress
+    address = local_address()
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if ip.is_private and ip not in ipaddress.ip_network("100.64.0.0/10"):
+        return mdns_name() or address
+    return address
+
+
 def new_key(authorized_keys):
     """Authorizes a fresh key and returns its private half as one base64 line."""
     comment = "baran " + time.strftime("%Y-%m-%d")
@@ -377,7 +405,7 @@ def main():
                         help=argparse.SUPPRESS)
     options = parser.parse_args()
 
-    code = {"herdr": 1, "n": options.name, "h": options.host or local_address(), "p": options.port,
+    code = {"herdr": 1, "n": options.name, "h": options.host or pair_host(), "p": options.port,
             "u": options.user, "c": options.command}
     comment = None
     if not options.no_key:
