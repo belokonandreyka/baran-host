@@ -3,6 +3,11 @@
 The Baran app shows the entries newer than the installed version next to its
 update button. One version per `## ` heading, one change per `- ` line.
 
+## 0.3.21
+
+- A question you answered at the computer or on another phone comes off the phones' screens: `baran push clear`, sent by the Claude Code hooks and the pi extension (needs Baran 1.0.6 build 22 on the phone)
+- Claude Code gets two more hooks for this; the app offers to update them
+
 ## 0.3.20
 
 - The stock phrases in pushes ("Asks: …", "Needs permission", "Finished and is waiting for you.") are in English; the app shows them in the phone's language

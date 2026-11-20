@@ -11,6 +11,9 @@ Apple directly and need the APNs key from the developer account here.
   baran push notify "Title" "Body"  same, but silent while the Mac is in use
   baran push send --kind ask ...    an agent waits on a question or a permission:
                                     the app lets it through Focus with its own sound
+  baran push clear "Title"          the agent got its answer: phones take the
+                                    notification off the screen (nothing is
+                                    sent when no push is waiting from here)
   baran push claude-hook            notify, fed by a Claude Code hook on stdin
   baran push codex-hook             the same for a Codex hook (Stop, PermissionRequest)
 
@@ -28,6 +31,7 @@ import subprocess
 import sys
 import time
 
+import hashlib
 import settings
 
 BASE = os.path.expanduser("~/.config/baran")
@@ -165,9 +169,10 @@ def quiet(kind):
     return values["quiet_subagents"] and nested()
 
 
-def send(title, body, only_always=False, kind=None):
+def send(title, body, only_always=False, kind=None, tool=None):
     """`only_always`: just the phones that asked to hear even while the Mac is in use.
-    `kind` "ask": the agent waits for an answer, not just finished."""
+    `kind` "ask": the agent waits for an answer, not just finished.
+    `tool`: the tool whose permission is asked for, for `clear`."""
     if quiet(kind):
         return 0
     try:
@@ -181,12 +186,15 @@ def send(title, body, only_always=False, kind=None):
         devices = [d for d in devices if not d.get("asks_only")]
     if not devices:
         return 0
-    gone, failed = [], 0
+    gone, failed, reached = [], 0, False
     for device in [d for d in devices if d.get("relay")]:
         sent, lost = send_relayed(device, title, body, kind)
         failed += not sent
+        reached = reached or sent
         if lost:
             gone.append(device["id"])
+    if reached:
+        remember(title, tool)
     direct = [d for d in devices if d.get("token") and not d.get("relay")]
     try:
         config = json.load(open(os.path.join(BASE, "apns.json"))) if direct else None
@@ -217,6 +225,65 @@ def send(title, body, only_always=False, kind=None):
             json.dump([d for d in everyone if d.get("id") not in gone and d.get("token") not in gone],
                       out, indent=1)
     return 1 if failed else 0
+
+
+def waiting_file(title):
+    """One per place a push came from: the herdr pane or herdr-core terminal
+    the hook runs in, else the title ("Claude · folder")."""
+    place = os.environ.get("HERDR_PANE_ID") or os.environ.get("HC_TERMINAL_ID")
+    key = f"{os.environ.get('HERDR_SOCKET_PATH', '')}|{place}" if place else f"title|{title}"
+    return os.path.join(BASE, "waiting", hashlib.sha256(key.encode()).hexdigest()[:24])
+
+
+def remember(title, tool=None):
+    """A push from here is on the phones until `clear` takes it off."""
+    try:
+        path = waiting_file(title)
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        with open(path, "w") as out:
+            json.dump({"title": title, "tool": tool, "at": int(time.time())}, out)
+    except OSError:
+        pass
+
+
+def clear_relayed(device, title):
+    """Asks the relay for a silent push; a relay or phone that does not know
+    it changes nothing here, and no phone is forgotten over it."""
+    import seal
+    key = base64.b64decode(device["key"])
+    box = seal.seal(key, sealed_message(title, "", "clear", device.get("host")).encode())
+    subprocess.run(
+        ["curl", "-sS", "--max-time", "10", "-o", os.devnull,
+         "-H", "content-type: application/json",
+         "-H", f"authorization: Bearer {device['id']}.{device['secret']}",
+         "--data-binary", "@-", device["relay"].rstrip("/") + "/v1/clear"],
+        input=json.dumps({"sealed": base64.b64encode(box).decode()}), capture_output=True, text=True)
+
+
+def clear(title, tool=None):
+    """The agent that pushed from here has its answer (answered at the
+    computer or from one of the phones): the phones drop the notification.
+    `tool`: the tool that just ran; a push that waits on another tool's
+    permission stays."""
+    path = waiting_file(title)
+    try:
+        waiting = json.load(open(path))
+    except (OSError, ValueError):
+        return 0
+    if tool and waiting.get("tool") and waiting["tool"] != tool:
+        return 0
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    try:
+        devices = json.load(open(os.path.join(BASE, "devices.json")))
+    except (OSError, ValueError):
+        return 0
+    for device in devices:
+        if device.get("relay") and device.get("key"):
+            clear_relayed(device, waiting.get("title") or title)
+    return 0
 
 
 def at_the_mac():
@@ -274,6 +341,11 @@ def claude_hook():
     folder = os.path.basename(event.get("cwd") or "") or "Claude"
     name = event.get("hook_event_name")
     title = f"Claude · {folder}"
+    # You answered, here or from a phone, and Claude went on.
+    if name == "UserPromptSubmit":
+        return clear(title)
+    if name == "PostToolUse":
+        return clear(title, tool=event.get("tool_name"))
     if name == "Stop":
         return notify(title, excerpt(last_reply(event)) or "Finished and is waiting for you.")
     # Claude stops and waits for you: these go out even while you are at the Mac.
@@ -281,7 +353,8 @@ def claude_hook():
     if name == "PermissionRequest":
         what = tool.get("command") or tool.get("file_path") or tool.get("url") or ""
         detail = excerpt(f"{event.get('tool_name') or ''} {what}".strip(), 120)
-        return send(title, "Needs permission" + (f": {detail}" if detail else ""), kind="ask")
+        return send(title, "Needs permission" + (f": {detail}" if detail else ""), kind="ask",
+                    tool=event.get("tool_name"))
     if name == "PreToolUse" and event.get("tool_name") == "AskUserQuestion":
         questions = tool.get("questions") or []
         asked = questions[0].get("question") if questions and isinstance(questions[0], dict) else ""
@@ -327,6 +400,8 @@ if __name__ == "__main__":
         sys.exit(send(rest[0], rest[1], kind=kind))
     if sys.argv[1:2] == ["notify"] and len(rest) == 2:
         sys.exit(notify(rest[0], excerpt(rest[1]), kind=kind))
+    if sys.argv[1:2] == ["clear"] and len(sys.argv) == 3:
+        sys.exit(clear(sys.argv[2]))
     if sys.argv[1:2] == ["claude-hook"]:
         sys.exit(claude_hook())
     if sys.argv[1:2] == ["codex-hook"]:

@@ -42,9 +42,20 @@ export default function (pi) {
   let interactive = false;
   let folder = "pi";
 
+  // A push from this session may be on the phones: once the question is
+  // answered or the next turn starts, they are told to take it down.
+  let pushed = false;
+  const clear = () => {
+    if (!pushed) return;
+    pushed = false;
+    push(["clear", `pi · ${folder}`]);
+  };
+
   // A question waits for an answer, so it goes out even while the Mac is in use.
   pi.events?.on?.("herdr:blocked", (data) => {
-    if (!interactive || !data?.active) return;
+    if (!interactive) return;
+    if (!data?.active) return clear();
+    pushed = true;
     const header = typeof data.label === "string" && data.label.trim() ? data.label.trim() : "";
     push(["send", "--kind", "ask", `pi · ${folder}`, header ? `Asks: ${header}` : "Has a question for you."]);
   });
@@ -54,6 +65,8 @@ export default function (pi) {
     folder = basename(ctx?.cwd ?? process.cwd()) || "pi";
   });
 
+  pi.on("agent_start", () => clear());
+
   pi.on("agent_settled", (_event, ctx) => {
     // A subagent's finished turn (pi-collaborating-agents sets
     // PI_COLLAB_SUBAGENT_DEPTH) is held back by `baran push` itself while the
@@ -61,6 +74,7 @@ export default function (pi) {
     if (!interactive || ctx?.isIdle?.() !== true || !baran) {
       return;
     }
+    pushed = true;
     push(["notify", `pi · ${folder}`, lastReply(ctx) || "Finished and is waiting for you."]);
   });
 }

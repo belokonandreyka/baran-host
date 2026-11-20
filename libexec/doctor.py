@@ -26,7 +26,9 @@ CODEX_CONFIG = os.path.expanduser("~/.codex/config.toml")
 CODEX_EVENTS = ("Stop", "PermissionRequest")
 # Stop: the reply. The others: Claude waits for you (a permission, a
 # question, a plan to approve).
-CLAUDE_EVENTS = (("Stop", None), ("PermissionRequest", None), ("PreToolUse", "AskUserQuestion|ExitPlanMode"))
+# UserPromptSubmit and PostToolUse: you answered, so the phones drop the push.
+CLAUDE_EVENTS = (("Stop", None), ("PermissionRequest", None), ("PreToolUse", "AskUserQuestion|ExitPlanMode"),
+                 ("UserPromptSubmit", None), ("PostToolUse", None))
 PI_EXTENSIONS = os.path.expanduser("~/.pi/agent/extensions")
 BUNDLED_PI = os.path.join(ROOT, "extensions", "baran-push.ts")
 BUNDLED_HERMES = os.path.join(ROOT, "extensions", "hermes", "baran-push")

@@ -42,7 +42,7 @@ class PushKindTest(unittest.TestCase):
     def hook(self, function, event, at_the_mac=False, calls=None):
         calls = [] if calls is None else calls
         record = lambda *args, **kw: calls.append((function, args, kw)) or 0  # noqa: E731
-        with mock.patch.object(push, "send", side_effect=lambda t, b, only_always=False, kind=None:
+        with mock.patch.object(push, "send", side_effect=lambda t, b, only_always=False, kind=None, tool=None:
                                   record(t, b, kind=kind, only_always=only_always)), \
                 mock.patch.object(push, "at_the_mac", return_value=at_the_mac), \
                 mock.patch("sys.stdin", io.StringIO(json.dumps(event))):
@@ -74,11 +74,66 @@ class AsksOnlyTest(unittest.TestCase):
         for kind, expected in ((None, ["all"]), ("ask", ["all", "asks"])):
             sent = []
             with mock.patch.object(push, "quiet", return_value=False), \
+                    mock.patch.object(push, "remember"), \
                     mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(devices))), \
                     mock.patch.object(push, "send_relayed",
                                       side_effect=lambda d, *a: sent.append(d["id"]) or (True, False)):
                 push.send("T", "B", kind=kind)
             self.assertEqual(sent, expected, kind)
+
+
+class ClearTest(unittest.TestCase):
+    """A push leaves a mark; the answer takes it and tells the phones once."""
+
+    def setUp(self):
+        import tempfile
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        devices = [{"relay": "https://r", "id": "a", "secret": "s", "key": "AA=="}, {"token": "raw"}]
+        with open(os.path.join(self.folder.name, "devices.json"), "w") as out:
+            json.dump(devices, out)
+        self.cleared = []
+        for patch in (mock.patch.object(push, "BASE", self.folder.name),
+                      mock.patch.object(push, "quiet", return_value=False),
+                      mock.patch.object(push, "send_relayed", return_value=(True, False)),
+                      mock.patch.object(push, "clear_relayed", side_effect=lambda d, t: self.cleared.append((d["id"], t))),
+                      mock.patch.dict(os.environ, {"HERDR_PANE_ID": "w1:p1"})):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_nothing_is_sent_when_nothing_waits(self):
+        push.clear("Claude · x")
+        self.assertEqual(self.cleared, [])
+
+    def test_an_answer_clears_once_and_only_relayed_phones(self):
+        push.send("Claude · x", "Asks: Which?", kind="ask")
+        push.clear("Claude · x")
+        push.clear("Claude · x")
+        self.assertEqual(self.cleared, [("a", "Claude · x")])
+
+    def test_another_tool_finishing_leaves_a_permission_request(self):
+        push.send("Claude · x", "Needs permission: Bash rm", kind="ask", tool="Bash")
+        push.clear("Claude · x", tool="Read")
+        self.assertEqual(self.cleared, [])
+        push.clear("Claude · x", tool="Bash")
+        self.assertEqual(len(self.cleared), 1)
+
+    def test_panes_do_not_clear_each_other(self):
+        push.send("Claude · x", "done")
+        with mock.patch.dict(os.environ, {"HERDR_PANE_ID": "w1:p2"}):
+            push.clear("Claude · x")
+        self.assertEqual(self.cleared, [])
+
+    def test_claude_hooks_clear(self):
+        push.send("Claude · x", "done")
+        event = {"hook_event_name": "UserPromptSubmit", "cwd": "/x"}
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(event))):
+            self.assertEqual(push.claude_hook(), 0)
+        self.assertEqual(self.cleared, [("a", "Claude · x")])
+
+    def test_the_clear_box_says_what_it_is(self):
+        message = json.loads(push.sealed_message("Claude · x", "", "clear", "HOST"))
+        self.assertEqual((message["k"], message["h"], message["p"]), ("clear", "HOST", "w1:p1"))
 
 
 if __name__ == "__main__":
