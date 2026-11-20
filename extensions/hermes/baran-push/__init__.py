@@ -75,7 +75,7 @@ def on_pre_llm_call(session_id="", platform="", **kwargs):
 
 def on_post_llm_call(session_id="", assistant_response="", platform="", **kwargs):
     if _INTERACTIVE and platform == "cli" and isinstance(assistant_response, str):
-        _push("notify", _title(), assistant_response.strip() or "Закінчив і чекає на вас.")
+        _push("notify", _title(), assistant_response.strip() or "Finished and is waiting for you.")
 
 
 def on_pre_tool_call(tool_name="", args=None, **kwargs):
@@ -85,12 +85,12 @@ def on_pre_tool_call(tool_name="", args=None, **kwargs):
         platform = _platforms.get(_session(kwargs=kwargs))
     if platform == "cli":
         question = (args or {}).get("question") if isinstance(args, dict) else ""
-        _push("send", _title(), "Питає: " + question if question else "Має до вас питання.")
+        _push("send", _title(), "Asks: " + question if question else "Has a question for you.")
 
 
 def on_pre_approval_request(command="", surface="", **kwargs):
     if _INTERACTIVE and surface == "cli":
-        _push("send", _title(), "Потрібен дозвіл: " + command if command else "Потрібен дозвіл.")
+        _push("send", _title(), "Needs permission: " + command if command else "Needs permission.")
 
 
 def register(ctx):

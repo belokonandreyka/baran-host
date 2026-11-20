@@ -46,7 +46,7 @@ export default function (pi) {
   pi.events?.on?.("herdr:blocked", (data) => {
     if (!interactive || !data?.active) return;
     const header = typeof data.label === "string" && data.label.trim() ? data.label.trim() : "";
-    push(["send", "--kind", "ask", `pi · ${folder}`, header ? `Питає: ${header}` : "Має до вас питання."]);
+    push(["send", "--kind", "ask", `pi · ${folder}`, header ? `Asks: ${header}` : "Has a question for you."]);
   });
 
   pi.on("session_start", (_event, ctx) => {
@@ -61,6 +61,6 @@ export default function (pi) {
     if (!interactive || ctx?.isIdle?.() !== true || !baran) {
       return;
     }
-    push(["notify", `pi · ${folder}`, lastReply(ctx) || "Закінчив і чекає на вас."]);
+    push(["notify", `pi · ${folder}`, lastReply(ctx) || "Finished and is waiting for you."]);
   });
 }

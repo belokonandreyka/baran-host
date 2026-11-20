@@ -3,6 +3,10 @@
 The Baran app shows the entries newer than the installed version next to its
 update button. One version per `## ` heading, one change per `- ` line.
 
+## 0.3.20
+
+- The stock phrases in pushes ("Asks: …", "Needs permission", "Finished and is waiting for you.") are in English; the app shows them in the phone's language
+
 ## 0.3.19
 
 - `baran pair` on a Mac puts its Bonjour name (`Name.local`) into the code, so the saved host survives a new address from the router

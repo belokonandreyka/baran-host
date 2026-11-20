@@ -275,20 +275,20 @@ def claude_hook():
     name = event.get("hook_event_name")
     title = f"Claude · {folder}"
     if name == "Stop":
-        return notify(title, excerpt(last_reply(event)) or "Закінчив і чекає на вас.")
+        return notify(title, excerpt(last_reply(event)) or "Finished and is waiting for you.")
     # Claude stops and waits for you: these go out even while you are at the Mac.
     tool = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
     if name == "PermissionRequest":
         what = tool.get("command") or tool.get("file_path") or tool.get("url") or ""
         detail = excerpt(f"{event.get('tool_name') or ''} {what}".strip(), 120)
-        return send(title, "Потрібен дозвіл" + (f": {detail}" if detail else ""), kind="ask")
+        return send(title, "Needs permission" + (f": {detail}" if detail else ""), kind="ask")
     if name == "PreToolUse" and event.get("tool_name") == "AskUserQuestion":
         questions = tool.get("questions") or []
         asked = questions[0].get("question") if questions and isinstance(questions[0], dict) else ""
-        return send(title, "Питає: " + excerpt(asked) if asked else "Має до вас питання.", kind="ask")
+        return send(title, "Asks: " + excerpt(asked) if asked else "Has a question for you.", kind="ask")
     if name == "PreToolUse" and event.get("tool_name") == "ExitPlanMode":
-        return send(title, "План готовий і чекає на схвалення.", kind="ask")
-    return notify(title, event.get("message") or "Потрібна ваша відповідь.")
+        return send(title, "The plan is ready and waits for approval.", kind="ask")
+    return notify(title, event.get("message") or "Needs your answer.")
 
 
 def codex_hook():
@@ -301,7 +301,7 @@ def codex_hook():
     folder = os.path.basename(event.get("cwd") or "") or "Codex"
     if event.get("hook_event_name") == "Stop":
         said = event.get("last_assistant_message")
-        body = excerpt(said) if isinstance(said, str) and said.strip() else "Закінчив і чекає на вас."
+        body = excerpt(said) if isinstance(said, str) and said.strip() else "Finished and is waiting for you."
         return notify(f"Codex · {folder}", body)
     if event.get("hook_event_name") == "PermissionRequest":
         tool = event.get("tool_input") or {}
@@ -310,7 +310,7 @@ def codex_hook():
             what = " ".join(map(str, what))
         detail = excerpt(f"{event.get('tool_name') or ''} {what or ''}".strip(), 120)
         # It waits for an answer, so it goes out even while the Mac is in use (as Claude's does).
-        return send(f"Codex · {folder}", "Потрібен дозвіл" + (f": {detail}" if detail else ""), kind="ask")
+        return send(f"Codex · {folder}", "Needs permission" + (f": {detail}" if detail else ""), kind="ask")
     return 0
 
 
